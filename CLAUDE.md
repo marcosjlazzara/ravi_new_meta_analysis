@@ -7,28 +7,41 @@ Do not wait for him to ask.
 
 ---
 
-## Project Status (as of September 7, 2026)
+## Project Status (as of September 28, 2026)
 
+### Phase 1 — consolidation: BUILT
 - **Requirements:** confirmed — `META_BRIEF.md` (19 locked decisions, settled in a full requirements interview)
 - **Design:** complete — `ARCHITECTURE.md` (module map, data contracts, 17 edge cases, precision contract)
-- **Code: BUILD COMPLETE** — all 5 phases implemented, each QC-approved by `qc-reviewer`
-- **Tests: 236/236 passing**, exit 0
+- **Code: BUILD COMPLETE** — all 5 build stages implemented, each QC-approved by `qc-reviewer`
+- **Tests: 237/237 passing**, exit 0 (236 + a round-trip check for the `Master_File_` prefix, Sep 8)
+- **Output naming (Sep 8):** downloaded masters are `Master_File_<name>_<timestamp>.csv`;
+  detection still keys on `master_`, so old `Master_*` files are still found
 - **App:** confirmed to launch (`http://localhost:8501`, HTTP 200)
-- **Git:** committed and pushed — `master` = `origin/master` at
+- **Git:** `master` = `origin/master` at
   `https://github.com/MarcosCircana/new_meta_lift_analysis_ravi` (private).
   `.gitignore` blocks all client data; no data file has ever been committed.
-  One unstaged item: `Meta Analysis_NewV1.docx` shows as modified — that change predates
-  the build and was deliberately left alone.
-- **Next step:** interactive verification of `app.py` by a human (see checklist below)
+  Unstaged and deliberately left alone: `Meta Analysis_NewV1.docx` (modified, predates the build),
+  `Meta Analysis_NewV1_STATUS.md` and `Phase 3 Summary.docx` (untracked).
+- **Still outstanding:** interactive verification of `app.py` by a human (checklist below)
+
+### Phase 2 — study metadata & calculations: SCOPED, NOT BUILT
+- **Branch:** `phase2` — `master` stays the signed-off Phase 1 until Phase 2 passes QC
+- **Requirements:** confirmed 2026-09-28 — `PHASE2_BRIEF.md` (33 locked decisions)
+- **Stage 0 (docs):** brief written, Ravi questions added (Q20–Q24), rules 2 and 4 amended below
+- **Next step:** `architect` design for Phase 2, reviewed by Marcos before any code
+- Called "Phase 3" in `Meta Analysis_NewV1.docx` and the meeting notes; "Phase 2" in this project
 
 ### Documents
 
 | File | Role |
 |------|------|
 | `CLAUDE.md` | This file — live status, rules, what's outstanding |
-| `META_BRIEF.md` | Authority on **what** was agreed: 19 locked decisions, 4 deviations |
+| `META_BRIEF.md` | Authority on **what** was agreed for Phase 1: 19 locked decisions, 4 deviations |
+| `PHASE2_BRIEF.md` | Authority on **what** was agreed for Phase 2: 33 locked decisions, formulas, messages, glossary draft |
+| `Phase 2 process/master_file_w_calculations.xlsx` | Ravi's reference workbook — formulas + cached results for the Phase 2 calculations. Client data, gitignored. |
+| `Phase 3 Summary.docx` | Meeting notes (Ravi + Marcos) that scoped Phase 2 |
 | `ARCHITECTURE.md` | Authority on **how**: module map, contracts, 17 edge cases, precision contract |
-| `QUESTIONS_FOR_RAVI.md` | 19 questions for the requester, annotated against the build — **3 are still open and affect existing code** |
+| `QUESTIONS_FOR_RAVI.md` | 24 questions for the requester: Q1–Q19 annotated against the Phase 1 build (**3 still open and affect existing code**), Q20–Q24 open Phase 2 points |
 | `HANDOFF.md` | Inherited lessons from the predecessor project |
 | `Meta Analysis_NewV1.docx` | The original source requirement |
 
@@ -94,10 +107,16 @@ These were each enforced through five QC reviews. Breaking one is a regression.
    `parse_dates=`, `thousands=`, `decimal=`, and `read_csv`/`read_excel` without `dtype=str`.
    Values pass through byte-exact — a 17-digit decimal must survive the full pipeline
    character-for-character.
+   *Phase 2 amendment:* the calculated columns are computed with `decimal.Decimal` on parsed
+   copies — never float. Source values are never altered and are still written byte-exact.
 3. **No filesystem writes anywhere.** This is a hosted app with no disk access. There is no
    output folder. Output is `st.download_button` only.
-4. **No column name other than `config.STUDY_NAME_COL` as a literal in `code/`.** The 31-name
-   reference list belongs solely in `test_meta_pipeline.py`.
+4. **Column names appear as literals only in `config.py`.** *(Amended for Phase 2 — was "no
+   column name other than `config.STUDY_NAME_COL`".)* Phase 2's calculations must name their
+   source columns (`dependent_variable`, `CNT_EXPSD_HH`, `ADJ_MEAN_EXPSD_GRP`, `MODEL_DESC`,
+   `Model`), and they are matched by name, never by column letter. Every other module refers to
+   them through `config`. The 31-name reference list still belongs solely in
+   `test_meta_pipeline.py`.
 5. **The schema is never hardcoded.** It comes from the master at runtime.
 6. **Validation never halts the run.** The single exception is a master that cannot be loaded —
    without it there is no schema to validate against.
@@ -146,7 +165,8 @@ See `META_BRIEF.md` section 7, also summarised at the end of `QUESTIONS_FOR_RAVI
 follow from the hosted-web-app decision: no output folder, no true folder picker,
 `MODEL_DESC` standardization stays manual, schema read at runtime rather than stored.
 
-Same conversation as item 2 — send them together.
+Same conversation as item 2 — send them together, along with the five Phase 2 questions
+(Q20–Q24 in `QUESTIONS_FOR_RAVI.md`).
 
 ### 4. Open design defaults
 

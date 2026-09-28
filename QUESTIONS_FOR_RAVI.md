@@ -160,3 +160,40 @@ Not in the original list — these arose from building Phase 1 and need the same
 | "Store the file structure as the reference schema" | Read from the **master at runtime** | Same outcome, no stored state |
 
 **One behaviour that is correct-by-spec but surprising**, worth showing Ravi rather than letting him discover it: a previously-produced master fed back in as a *study* file has identical columns, so it validates cleanly and appends, with its `Study_Name` overwritten. It duplicates that master's rows under a new name. Every rule works as designed; the outcome still surprises. Detail in `ARCHITECTURE.md` section 8 item 9.
+
+---
+
+## Phase 2 (study metadata & calculations) — added 2026-09-28
+
+Scoped in `PHASE2_BRIEF.md` (33 locked decisions). Not yet built. These five are the open points
+from that interview; each has a working default so the build is not blocked.
+
+20. **Studyname template values — numbers only, or text too?** Columns `Avg_Brand_Price`,
+    `Avg_Purch_Cycle`, `Pct_HH_Buying`, `Tot_Camp_Cost`, `Tot_Camp_Impr` look numeric;
+    `Read_Type` is text.
+
+    > **Default:** a non-numeric value in those five columns is **flagged as a warning but kept
+    > as typed** — never blocked, never altered. One config flag turns the check off.
+
+21. **Total Buying Trips per Buyer (AM) — rounded or full precision?** Your workbook formula is
+    `TEXT(N,"0.00")`, which rounds to 2 decimals and stores text (`1.95`). Every other column keeps
+    full precision.
+
+    > **Default:** full precision (`1.9454682413648197`), so nothing is lost before later phases.
+    > Rounding is one config setting if you want it.
+
+22. **Calculated-column headers — two clean-ups OK?**
+    (a) Six of the eight headers end in an invisible zero-width character (`​`), almost
+    certainly from copy-paste; it breaks pivots and lookups. (b) "**Instacart** Member Overlap %
+    with Circana Retailer" names one partner in a tool meant for any client.
+
+    > **Default:** strip the hidden characters; rename to "**Partner** Member Overlap % with
+    > Circana Retailer". All other wording unchanged.
+
+23. **What unit is Average Purchase Cycle in** — days or weeks? The workbook's sample values
+    (25, 100, 150) do not settle it.
+
+    > **Default:** glossary says "unit: TBC".
+
+24. **Glossary definitions** — please confirm or correct the draft in `PHASE2_BRIEF.md`
+    section 7. It ships inside the template (sheet 2) and on screen.
