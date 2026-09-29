@@ -41,16 +41,49 @@ specified in ARCHITECTURE.md section 2:
           Two st.download_button calls; the exception report is always
           offered, even when empty, so the user never wonders if it failed.
 
+  --- PHASE 2 — study metadata & calculations (PHASE2_ARCHITECTURE.md section 8) ---
+  Rendered only when result is not None AND "p2_calc" is in st.session_state
+  (i.e. only after a successful Run). p2_calc / p2_base_name / the template
+  bytes+filename+study count are all written once, inside the Run block
+  above, from the same `now`, alongside the Phase 1 session_state writes —
+  they depend only on the just-built master, which changes only on Run.
+
+  STEP 7  Download template — template_builder.py -> build_template_bytes(),
+          list_template_studies(). One download button (the blank
+          studyname_master workbook) plus a Glossary expander (fields table,
+          extras note, rules, calculated-column note and table).
+
+  STEP 8  Upload completed template — metadata_upload.py -> parse_upload().
+          A single .xlsx/.csv uploader. An empty slot shows the upload
+          prompt; the CSV-caution caption (ruling C5) is always shown below
+          it. A refused upload shows its refusal message and STEP 9 does not
+          render.
+
+  STEP 9  Final file — final_builder.py -> build_final(), recomputed on
+          EVERY rerun from the current master (st.session_state["result"])
+          and the current upload (P29: never cached, unlike p2_calc).
+          report.py -> phase2_warnings_to_frame() / summarize_phase2_warnings().
+          csv_writer.py -> build_final_filename() / build_phase2_warnings_filename().
+          Two more download buttons (after_formulas_master always; the
+          phase2_warnings CSV only when there are warnings).
+
 Module map:
   config.py               — constants (extensions, prefix, status/reason strings, patterns)
   models.py                — dataclasses passed between modules (UploadedItem, MasterContext, ...)
-  file_reader.py            — bytes -> all-string DataFrame
+  file_reader.py            — bytes -> all-string DataFrame (+ read_raw_grid, header-less)
   master_detector.py         — finds/validates the master; builds MasterContext
   schema.py                   — column normalization, comparison, reordering, tagging
   study_processor.py           — per-file pipeline + batch loop -> BatchResult
   report.py                     — BatchResult -> exception report + summary dict
+                                   (+ phase2_warnings_to_frame / summarize_phase2_warnings)
   csv_writer.py                  — timestamped filenames + UTF-8-BOM bytes
-  test_meta_pipeline.py           — python test_meta_pipeline.py
+                                   (+ template/final/phase2_warnings filename builders)
+  numeric.py                      — exact-decimal parse/format/multiply (Phase 2)
+  calculations.py                  — master frame -> 8 calculated columns + warnings (Phase 2)
+  template_builder.py                — distinct study list -> studyname_master .xlsx bytes (Phase 2)
+  metadata_upload.py                  — completed-template bytes -> ParsedUpload (Phase 2)
+  final_builder.py                     — master + calculations + ParsedUpload -> FinalResult (Phase 2)
+  test_meta_pipeline.py                 — python test_meta_pipeline.py
 """
 
 from __future__ import annotations
@@ -62,18 +95,37 @@ import pandas as pd
 import streamlit as st
 
 import config
-from csv_writer import build_exception_filename, build_master_filename, to_csv_bytes
+from calculations import build_calculations
+from csv_writer import (
+    build_exception_filename,
+    build_final_filename,
+    build_master_filename,
+    build_phase2_warnings_filename,
+    build_template_filename,
+    to_csv_bytes,
+)
 from file_reader import FileReadError
+from final_builder import build_final
 from master_detector import (
     build_master_context_from_existing,
     build_master_context_from_first_file,
     find_master_candidates,
+    first_master_slot_allowed,
     sanitize_base_name,
 )
+from metadata_upload import parse_upload
 from models import FileOutcome, MasterContext, UploadedItem
-from report import build_exception_report, outcomes_to_frame, summarize
+from report import (
+    build_exception_report,
+    outcomes_to_frame,
+    phase2_warnings_to_frame,
+    rejected_files_message,
+    summarize,
+    summarize_phase2_warnings,
+)
 from schema import SchemaError
-from study_processor import process_batch
+from study_processor import is_run_ready, process_batch
+from template_builder import build_template_bytes, list_template_studies
 
 # ---------------------------------------------------------------------------
 # STEP 0 — page config
@@ -118,7 +170,12 @@ valid_candidates = [c for c in candidates if c.is_valid]
 invalid_candidates = [c for c in candidates if not c.is_valid]
 
 for c in invalid_candidates:
-    if not c.readable:
+    if c.is_phase2_output:
+        # P3: a Master_-prefixed file carrying calculated/merged columns is
+        # never a valid master, readable or not. Checked first so it is never
+        # misreported as "no Study_Name column" below.
+        st.warning(f"'{c.name}': " + config.MSG_PHASE2_OUTPUT)
+    elif not c.readable:
         # Edge case 8b: surface candidate.error VERBATIM. A Master_-prefixed
         # file with duplicate columns is readable=False with the real reason
         # captured in .error (e.g. the exact duplicate-column detail) — a
@@ -199,8 +256,12 @@ elif len(valid_candidates) > 1:
     else:
         st.info("Select which file is the current master to continue.")
 
-else:
-    # STEP 2b — first-master slot, rendered ONLY when zero valid candidates exist.
+elif first_master_slot_allowed(candidates):
+    # STEP 2b — first-master slot, rendered ONLY when zero valid candidates
+    # exist AND none of them is a Phase 2 output (P3, design default 7). A
+    # Phase 2 output offered as the only candidate must not silently fall
+    # through to "designate the first one" — Run stays disabled until a
+    # proper master is supplied.
     st.subheader("No master found — designate the first one")
     first_labels = [f"{item.name} (upload #{item.index + 1})" for item in items]
     chosen_first_label = st.selectbox(
@@ -231,6 +292,11 @@ else:
         )
     else:
         st.info("Choose a file and type a study name to create the first master.")
+
+# Otherwise (P3): every candidate is a Phase 2 output and none is otherwise
+# valid. STEP 2b is suppressed entirely; master stays None and Run stays
+# disabled. No extra message — the agreed MSG_PHASE2_OUTPUT warning has
+# already been shown for each such file in STEP 2 above.
 
 # ---------------------------------------------------------------------------
 # STEP 3 — master loaded caption
@@ -319,21 +385,28 @@ if master is not None:
                 f"within this batch: {', '.join(dup_files)}. Only the first in upload "
                 "order will append; the rest will be skipped as duplicates."
             )
-    else:
+    elif master.created_this_run:
         st.info("No study files left to review — everything uploaded is the master.")
+    else:
+        # P4: an existing master with zero study files is a valid Run —
+        # the master is used as-is and Phase 2 unlocks (edge case P2-1).
+        st.info(config.MSG_MASTER_ONLY_RUN)
 
 # ---------------------------------------------------------------------------
 # STEP 5 — run
 # ---------------------------------------------------------------------------
 st.header("Run")
 
-ready = master is not None and len(study_items) > 0
+ready = is_run_ready(master, len(study_items))
 
 if not ready:
     reasons: list[str] = []
     if master is None:
         reasons.append("a master must be selected or created")
     elif len(study_items) == 0:
+        # P4: only the first-master path still requires a study file — an
+        # existing master may run alone (is_run_ready already accounts for
+        # this; this branch is therefore only reached on the first-master path).
         reasons.append("at least one study file must be available to append")
     st.info(f"Complete the following to enable Run: {', '.join(reasons)}.")
 
@@ -360,6 +433,18 @@ if st.button("Run", disabled=not ready, type="primary"):
     st.session_state["master_filename"] = build_master_filename(master.base_name, now)
     st.session_state["exception_filename"] = build_exception_filename(master.base_name, now)
 
+    # PHASE 2 — calculations and the template are pure functions of the just-
+    # built master, so they are computed once here (same `now`) and stashed
+    # in session_state exactly like the Phase 1 payloads above, surviving the
+    # reruns triggered by downloads and by the Phase 2 uploader.
+    calc = build_calculations(result.master_df)
+    studies = list_template_studies(result.master_df)
+    st.session_state["p2_calc"] = calc
+    st.session_state["p2_base_name"] = master.base_name
+    st.session_state["p2_template_bytes"] = build_template_bytes(studies)
+    st.session_state["p2_template_filename"] = build_template_filename(master.base_name, now)
+    st.session_state["p2_template_study_count"] = len(studies)
+
 # ---------------------------------------------------------------------------
 # STEP 6 — output, rendered from session_state, OUTSIDE the button block
 # ---------------------------------------------------------------------------
@@ -367,6 +452,21 @@ result = st.session_state.get("result")
 
 if result is not None:
     st.header("Results")
+
+    # Q16: whenever any file is rejected, say so up front — the metric and
+    # the table alone were too easy to miss.
+    rejected_banner = rejected_files_message(result.outcomes)
+    if rejected_banner:
+        st.warning(rejected_banner)
+
+    # P3: any study file rejected as Phase 2 output gets the clear message,
+    # once, followed by the affected filenames — not a per-file warning.
+    phase2_output_files = [
+        o.file for o in result.outcomes if o.reason == config.REASON_PHASE2_OUTPUT
+    ]
+    if phase2_output_files:
+        st.warning(config.MSG_PHASE2_OUTPUT)
+        st.caption(", ".join(phase2_output_files))
 
     summary = summarize(result)
     metric_cols = st.columns(len(summary))
@@ -392,6 +492,120 @@ if result is not None:
         file_name=st.session_state["exception_filename"],
         mime="text/csv",
     )
+
+# ---------------------------------------------------------------------------
+# PHASE 2 — STEPs 7-9, rendered only after a successful Run (guard mirrors
+# STEP 6: read exclusively from session_state, outside the button block).
+# ---------------------------------------------------------------------------
+if result is not None and "p2_calc" in st.session_state:
+    p2_calc = st.session_state["p2_calc"]
+    p2_base_name = st.session_state["p2_base_name"]
+    p2_template_bytes = st.session_state["p2_template_bytes"]
+    p2_template_filename = st.session_state["p2_template_filename"]
+    p2_template_study_count = st.session_state["p2_template_study_count"]
+
+    st.header("Phase 2 · Study metadata & calculations")
+
+    # -------------------------------------------------------------------
+    # STEP 7 — download template
+    # -------------------------------------------------------------------
+    st.subheader("STEP 7 — Download template")
+    st.info(config.MSG_TEMPLATE.format(n=p2_template_study_count))
+
+    template_col, glossary_col = st.columns(2)
+    with template_col:
+        st.download_button(
+            label="Download studyname_master",
+            data=p2_template_bytes,
+            file_name=p2_template_filename,
+            mime=config.XLSX_MIME,
+            key="dl_template",
+        )
+    with glossary_col:
+        with st.expander("Glossary"):
+            st.markdown(f"**{config.GLOSSARY_FIELDS_TITLE}**")
+            fields_frame = pd.DataFrame(
+                list(config.GLOSSARY_FIELD_ROWS),
+                columns=list(config.GLOSSARY_FIELD_COLUMNS),
+            )
+            st.dataframe(fields_frame, hide_index=True, use_container_width=True)
+
+            st.markdown(f"**{config.GLOSSARY_EXTRAS_TITLE}**")
+            st.markdown(config.GLOSSARY_EXTRAS_TEXT)
+
+            st.markdown(f"**{config.GLOSSARY_RULES_TITLE}**")
+            for rule in config.GLOSSARY_RULES:
+                st.markdown(f"- {rule}")
+
+            st.markdown(config.GLOSSARY_CALC_BLOCK_NOTE)
+            calc_frame = pd.DataFrame(
+                list(config.GLOSSARY_CALC_ROWS),
+                columns=list(config.GLOSSARY_CALC_COLUMNS),
+            )
+            st.dataframe(calc_frame, hide_index=True, use_container_width=True)
+
+    # -------------------------------------------------------------------
+    # STEP 8 — upload completed template
+    # -------------------------------------------------------------------
+    st.subheader("STEP 8 — Upload completed template (.xlsx or .csv)")
+    p2_upload = st.file_uploader(
+        "Drop the completed studyname_master file",
+        type=["xlsx", "csv"],
+        accept_multiple_files=False,
+        key="p2_upload",
+    )
+    st.caption(config.MSG_UPLOAD_CSV_CAUTION)
+
+    if p2_upload is None:
+        st.caption(config.MSG_UPLOAD_PROMPT)
+    else:
+        parsed = parse_upload(p2_upload.name, p2_upload.getvalue(), list(result.master_df.columns))
+        if not parsed.accepted:
+            st.error(parsed.refusal_message)
+        else:
+            # ---------------------------------------------------------------
+            # STEP 9 — final file. Rebuilt from scratch on EVERY rerun from
+            # the current master (st.session_state["result"].master_df) and
+            # the current upload — never cached (P29).
+            # ---------------------------------------------------------------
+            final = build_final(result.master_df, p2_calc, parsed)
+            now9 = datetime.now()
+
+            st.subheader("STEP 9 — Final file")
+            st.info(config.MSG_COLUMN_MATCHING)
+
+            if final.zero_match:
+                st.warning(config.MSG_ZERO_MATCH.format(n=final.upload_study_count))
+
+            if final.warnings:
+                st.warning(summarize_phase2_warnings(final))
+                with st.expander("Details"):
+                    st.dataframe(
+                        phase2_warnings_to_frame(final.warnings),
+                        hide_index=True,
+                        use_container_width=True,
+                    )
+            else:
+                st.success(config.MSG_NO_ISSUES)
+
+            st.dataframe(final.frame.head(20), use_container_width=True)
+            st.caption(f"Showing 20 of {len(final.frame)} total rows — download the file to see all.")
+
+            st.download_button(
+                label="Download after_formulas_master",
+                data=to_csv_bytes(final.frame),
+                file_name=build_final_filename(p2_base_name, now9),
+                mime=config.CSV_MIME,
+                key="dl_final",
+            )
+            if final.warnings:
+                st.download_button(
+                    label="Download phase2_warnings",
+                    data=to_csv_bytes(phase2_warnings_to_frame(final.warnings)),
+                    file_name=build_phase2_warnings_filename(p2_base_name, now9),
+                    mime=config.CSV_MIME,
+                    key="dl_p2_warnings",
+                )
 
 st.markdown("---")
 st.markdown(

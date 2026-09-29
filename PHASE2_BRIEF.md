@@ -43,7 +43,7 @@ Meta Analysis workflow (~5–7 days today).
 | P8 | Column A locked | Sheet protection, **no password**. Columns B onward (including H+ for user extras) stay editable. |
 | P9 | Template is always blank | No carry-over from earlier sessions. On-screen message explains this (section 6). |
 | P10 | Upload formats | **`.xlsx` and `.csv` always accepted.** Excel: sheet 1 only (glossary sheet ignored). |
-| P11 | Upload sanity check | **Refused** (no final file) if there is no `Study_Name` column, or if it contains master columns (i.e. the master itself was uploaded). **Accepted with strong warning** if `Study_Name` exists but zero studies match the master. This is Phase 2's single halt, parallel to Phase 1's unloadable-master exception. |
+| P11 | Upload sanity check | **Refused** (no final file) if there is no `Study_Name` column, or if it contains master columns (i.e. the master itself was uploaded) — defined as carrying **all three** of `MODEL_DESC`, `Model`, `dependent_variable` (ruling C2, 2026-09-28; any lesser clash follows P14). **Accepted with strong warning** if `Study_Name` exists but zero studies match the master. This is Phase 2's single halt, parallel to Phase 1's unloadable-master exception. |
 | P12 | Study-name matching | Trimmed, **case-insensitive**, otherwise exact. |
 | P13 | Row mismatches | In master but not upload → merged columns blank, warning. In upload but not master → ignored, warning. Same study twice in upload → merged columns **blank** for that study, warning. Row with name but all values blank → "not filled in yet", blank, **no** warning. |
 | P14 | User-added columns | Allowed from column **H** onward, merged after the fixed six. Blank header → ignored + warning. Header > 15 characters → warning, **still merged**. Duplicate header, or clash with a master column name → ignored + warning. |
@@ -55,7 +55,7 @@ Meta Analysis workflow (~5–7 days today).
 | P20 | Arithmetic | **Exact decimal arithmetic** (`decimal.Decimal`), never float. **Full precision everywhere**, products included. No rounding. |
 | P21 | AM rounding | The workbook has `TEXT(N,"0.00")`. **Built at full precision**; rounding is one config setting if Ravi asks for it. |
 | P22 | Block matching | A block = rows sharing **`Study_Name` + `MODEL_DESC` + `Model`**. The `pen` / `occ` / `dolhh` rows are found by `dependent_variable`, **case-insensitively**. Never by position. |
-| P23 | Broken block | Missing or duplicated `pen` / `occ` / `dolhh` row → AH and AL blank for that block, warning. Single-row columns still calculate. |
+| P23 | Broken block | Missing or duplicated `pen` / `occ` / `dolhh` row → AH and AL blank for that block, warning. Single-row columns still calculate. Applied literally: a missing `occ` also blanks AH (ruling C4). |
 | P24 | Source-column lookup | **By column name**, never by letter. Names live **only in `config.py`**. Required column missing → dependent calculated columns blank + one warning; merge still works. On-screen note always shown (section 6). |
 | P25 | Calculated headers | Ravi's names, with trailing zero-width characters (`​`) **stripped** and "Instacart Member" → **"Partner Member"**. AN output as an **empty column with header**. |
 | P26 | Final layout | Master unchanged → 8 calculated (AG–AN) → 6 merged fixed → user extras. **Placed relative to the master's last column**; letters are illustrative for a 32-column master. `Study_Name` is **not** repeated. Row count and order identical to the master. |
@@ -173,9 +173,19 @@ Phase 2 upload and downloads — the same session-state pattern Phase 1 STEP 6 a
 **Master-only Run (P4):**
 > ℹ️ No study files uploaded. The master will be used as-is for Phase 2.
 
+**Master or final file in the studyname slot (P11, ruling C3):**
+> ❌ This looks like a master or `after_formulas_master` file (it contains the master's data
+> columns), not a `studyname_master` file. Please upload the completed template downloaded above.
+
+**Unreadable upload (ruling C3):**
+> ❌ This file could not be read (…). Please upload the completed template downloaded above.
+
+**Under the studyname upload slot (ruling C5):**
+> Upload the .xlsx as downloaded; saving it as CSV from Excel turns percentages into text.
+
 ---
 
-## 7. Glossary — DRAFT, pending Ravi's confirmation
+## 7. Glossary — confirmed 2026-09-29 (Marcos; Q23/Q24)
 
 ### Columns to fill in (template sheet 2 and on screen)
 
@@ -183,7 +193,7 @@ Phase 2 upload and downloads — the same session-state pattern Phase 1 STEP 6 a
 |---|---|---|---|
 | `Study_Name` | Study name | **Locked** — filled by the app from the master. Do not edit. | `Instacart_Cascade` |
 | `Avg_Brand_Price` | Average Brand Price | Average price of the target brand (study period or latest 52 weeks). Number only, no currency symbol. | `3.49` |
-| `Avg_Purch_Cycle` | Average Purchase Cycle | Average time between purchases. Number only. **Unit: TBC (days?)** | `45` |
+| `Avg_Purch_Cycle` | Average Purchase Cycle | Average time between purchases. Whole number (e.g. 45). | `45` |
 | `Pct_HH_Buying` | % Household Buying | Share of households buying. Type `25%` or `0.25` — stored as `0.25`. | `25%` |
 | `Tot_Camp_Cost` | Total Campaign Cost | Total media cost of the campaign. Number only, no commas or currency symbol. | `150000` |
 | `Tot_Camp_Impr` | Total Campaign Impressions | Total impressions delivered. Number only, no commas. | `12500000` |
@@ -215,9 +225,18 @@ Two layers, both in the QC suite:
    and every edge case: broken block, `Pen` vs `pen`, shuffled rows, missing source column, long
    decimals kept exact.
 2. **Reference-workbook comparison — runs when `Phase 2 process/master_file_w_calculations.xlsx`
-   is present.** Rebuild the workbook's master from the same 3 sample studies, calculate, and
-   compare **every AG–AM cell on all 212 rows** against Excel's cached values:
-   - Excel non-blank → app agrees to **15 significant digits**.
+   is present.** Use the **workbook's own A–AF values** as the master (ruling C1, 2026-09-28),
+   plus a structural cross-check that its rows line up with the 3 sample studies in `Samples/`.
+   *Why not rebuild from `Samples/`:* the workbook's inputs are Excel-rounded (`0.036091684` vs
+   the source's `0.03609168443151368`), so a rebuild disagrees from the 8th significant digit and
+   would fail a correct app. Calculate, and compare **every AG–AM cell on all 212 rows** against
+   Excel's cached values:
+   - Excel non-blank → app agrees within **one fixed relative tolerance** (≈13 significant
+     digits, no special cases). *Ruling 2026-09-28, option B:* Excel's own arithmetic rounds at
+     the 15th digit (only 21 of 159 products equal a plain double product; text-stored inputs are
+     coerced differently), so a literal 15-digit match is not achievable by an exact app. Measured
+     worst case: app vs Excel 1.1 × 10⁻¹⁴ relative. A real formula error lands millions of times
+     larger. *(Originally "agrees to 15 significant digits".)*
    - Excel blank → app blank.
    - AM: app's full value must **round to** Excel's 2-decimal text.
    - A **shuffled-row** rerun must produce identical results.
@@ -262,12 +281,26 @@ builds on the download-rerun path, which has never been clicked through by a hum
 
 ## 11. Open — for Ravi
 
+**Items 1–5 answered by Marcos 2026-09-29** (`QUESTIONS_FOR_RAVI.md` Q20–Q24): 1 value check stays
+on, warn and keep as typed; 2 full precision; 3 both clean-ups agreed; 4 no unit, glossary says
+"Whole number (e.g. 45)." with no extra check; 5 glossary agreed. Item 6 is still to be passed on to Ravi.
+
 1. Template values: **numbers only, or strings too?** (Value check is on until answered.)
 2. **AM**: full precision (as built) or rounded to 2 decimals as in the workbook?
 3. Calculated headers: OK to **strip the zero-width characters** and rename
    **"Instacart Member" → "Partner Member"**?
 4. **Unit of `Avg_Purch_Cycle`** — days or weeks?
 5. **Glossary definitions** (section 7) — confirm or correct.
+6. **Heads-up, not a question:** the app calculates from full-precision data, so its figures will
+   differ from a manually built workbook (whose inputs Excel rounded) from about the 8th digit.
+   The app's figures are the more accurate ones.
+
+## 11b. Design rulings (2026-09-28)
+
+All seven concerns in `PHASE2_ARCHITECTURE.md` section 15 were accepted as recommended:
+C1 reference inputs (section 8), C2 master-lookalike rule (P11), C3 refusal wording and C5 CSV
+caption (section 6), C4 literal P23, C6 rule scans added and the Phase 1 config list-length check
+replaced, C7 Excel text-coercion cells isolated and reported in layer 2.
 
 ## 12. Out of scope for this phase
 

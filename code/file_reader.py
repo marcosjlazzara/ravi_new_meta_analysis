@@ -53,7 +53,32 @@ def read_table(filename: str, data: bytes) -> pd.DataFrame:
     return _finalize(df)
 
 
-def _read_csv_bytes(data: bytes) -> pd.DataFrame:
+def read_raw_grid(filename: str, data: bytes) -> list[list[str]]:
+    """Header-less read of .csv / .xlsx sheet config.EXCEL_SHEET_INDEX
+    (PHASE2_ARCHITECTURE.md section 1.5). Row 0 is the header row EXACTLY as
+    typed — no pandas 'Unnamed: n' / '.1' mangling, because this is read with
+    header=None, so pandas never touches the header row at all. Every cell is
+    a str; missing -> "". All rows have equal length (pandas pads a ragged
+    grid). Same FileReadError contract as read_table. Header text is NOT
+    stripped here — callers (metadata_upload.py) strip it themselves.
+    """
+    if len(data) == 0:
+        raise FileReadError(config.REASON_EMPTY_FILE, "zero-length file")
+
+    extension = Path(filename).suffix.lower()
+
+    if extension == ".csv":
+        df = _read_csv_bytes(data, header=None)
+    elif extension == ".xlsx":
+        df = _read_excel_bytes(data, header=None)
+    else:
+        raise FileReadError(config.REASON_UNREADABLE, f"unrecognised extension: {extension!r}")
+
+    df = df.fillna("").astype(str)
+    return df.to_numpy().tolist()
+
+
+def _read_csv_bytes(data: bytes, header: int | None = 0) -> pd.DataFrame:
     """Try the encoding fallback chain in order. Only if all three fail (or the
     content genuinely has no header line) does this raise."""
     last_error: Exception | None = None
@@ -65,6 +90,7 @@ def _read_csv_bytes(data: bytes) -> pd.DataFrame:
                 na_filter=False,
                 encoding=encoding,
                 engine="c",
+                header=header,
             )
         except pd.errors.EmptyDataError as e:
             raise FileReadError(config.REASON_EMPTY_FILE, str(e)) from e
@@ -78,13 +104,14 @@ def _read_csv_bytes(data: bytes) -> pd.DataFrame:
     )
 
 
-def _read_excel_bytes(data: bytes) -> pd.DataFrame:
+def _read_excel_bytes(data: bytes, header: int | None = 0) -> pd.DataFrame:
     """Reads sheet index config.EXCEL_SHEET_INDEX only (brief decision 6)."""
     try:
         return pd.read_excel(
             io.BytesIO(data),
             sheet_name=config.EXCEL_SHEET_INDEX,
             dtype=str,
+            header=header,
         )
     except Exception as e:
         raise FileReadError(config.REASON_UNREADABLE, str(e)) from e

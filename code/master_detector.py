@@ -20,7 +20,7 @@ import pandas as pd
 import config
 from file_reader import FileReadError, read_table
 from models import MasterCandidate, MasterContext, UploadedItem
-from schema import build_column_index, normalize_column
+from schema import SchemaError, build_column_index, find_phase2_output_headers, normalize_column
 
 _TIMESTAMP_SUFFIX_RE = re.compile(config.MASTER_TIMESTAMP_SUFFIX_RE)
 _STUDY_NAME_KEY = normalize_column(config.STUDY_NAME_COL)
@@ -29,10 +29,11 @@ _STUDY_NAME_KEY = normalize_column(config.STUDY_NAME_COL)
 def find_master_candidates(items: Sequence[UploadedItem]) -> list[MasterCandidate]:
     """Every item whose stem.lower().startswith(config.MASTER_FILENAME_PREFIX).
 
-    Each candidate is read to populate readable / has_study_name / error.
-    This function must never raise — a candidate that fails to read (bad
-    bytes, unrecognised extension, duplicate columns, anything) becomes
-    readable=False with the error captured, rather than propagating.
+    Each candidate is read to populate readable / has_study_name / error /
+    is_phase2_output. This function must never raise — a candidate that
+    fails to read (bad bytes, unrecognised extension, duplicate columns,
+    anything) becomes readable=False with the error captured, rather than
+    propagating.
     """
     candidates: list[MasterCandidate] = []
     for item in items:
@@ -41,12 +42,16 @@ def find_master_candidates(items: Sequence[UploadedItem]) -> list[MasterCandidat
 
         readable = False
         has_study_name = False
+        is_phase2_output = False
         error = ""
         try:
             df = read_table(item.name, item.data)
             column_index = build_column_index(list(df.columns))
             readable = True
             has_study_name = _STUDY_NAME_KEY in column_index
+            # P3: a Master_-prefixed file carrying calculated/merged columns is
+            # not a valid master — see MasterCandidate.is_valid.
+            is_phase2_output = bool(find_phase2_output_headers(list(df.columns)))
         except Exception as e:  # noqa: BLE001 — must never raise, capture everything
             error = str(e)
 
@@ -57,9 +62,30 @@ def find_master_candidates(items: Sequence[UploadedItem]) -> list[MasterCandidat
                 readable=readable,
                 has_study_name=has_study_name,
                 error=error,
+                is_phase2_output=is_phase2_output,
             )
         )
     return candidates
+
+
+def first_master_slot_allowed(candidates: Sequence[MasterCandidate]) -> bool:
+    """False if any candidate is_phase2_output. app.py consults this only when
+    there are zero valid candidates: a Phase 2 output offered as the master
+    keeps Run disabled until a proper master is supplied (P3), rather than
+    silently falling through to the first-master slot.
+    """
+    return not any(c.is_phase2_output for c in candidates)
+
+
+def _refuse_phase2_output(frame: pd.DataFrame) -> None:
+    """Raise SchemaError(REASON_PHASE2_OUTPUT) if `frame`'s columns carry any
+    Phase 2 signature header. Called immediately after read_table in both
+    master-context builders — the second line of defence against an
+    after_formulas_master (or a studyname_master) picked as the master.
+    """
+    hits = find_phase2_output_headers(list(frame.columns))
+    if hits:
+        raise SchemaError(config.REASON_PHASE2_OUTPUT, config.MSG_PHASE2_OUTPUT)
 
 
 def parse_master_base_name(filename: str) -> str:
@@ -116,6 +142,7 @@ def build_master_context_from_existing(item: UploadedItem) -> MasterContext:
     validate against").
     """
     frame = read_table(item.name, item.data)
+    _refuse_phase2_output(frame)  # P3: second line of defence against an after_formulas_master
     # DESIGN DEFAULT — pending confirmation, see spec section 8, item 7
     # columns is taken verbatim in file order and never reordered here — an
     # inherited master's Study_Name position (wherever the uploaded file put
@@ -147,6 +174,7 @@ def build_master_context_from_first_file(item: UploadedItem, base_name: str) -> 
     base_name = sanitize_base_name(base_name). created_this_run = True.
     """
     frame = read_table(item.name, item.data)
+    _refuse_phase2_output(frame)  # P3: second line of defence against an after_formulas_master
     column_index = build_column_index(list(frame.columns))
 
     if _STUDY_NAME_KEY not in column_index:

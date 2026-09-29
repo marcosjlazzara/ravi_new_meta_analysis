@@ -27,6 +27,32 @@ def build_exception_filename(base_name: str, now: datetime | None = None) -> str
     return config.EXCEPTION_FILENAME_PATTERN.format(name=base_name, timestamp=timestamp)
 
 
+# =============================================================================
+# PHASE 2 — same {name}/{timestamp} contract as the two builders above
+# (PHASE2_ARCHITECTURE.md section 1.13). build_final_filename and
+# build_phase2_warnings_filename are Stage 4 consumers (final_builder.py,
+# report.py); added now since all three share the identical shape.
+# =============================================================================
+
+
+def build_template_filename(base_name: str, now: datetime | None = None) -> str:
+    """'Instacart' -> 'studyname_master_Instacart_2026-09-28_1430.xlsx' (given now)."""
+    timestamp = (now or datetime.now()).strftime(config.TIMESTAMP_FORMAT)
+    return config.TEMPLATE_FILENAME_PATTERN.format(name=base_name, timestamp=timestamp)
+
+
+def build_final_filename(base_name: str, now: datetime | None = None) -> str:
+    """'Instacart' -> 'after_formulas_master_Instacart_2026-09-28_1430.csv' (given now)."""
+    timestamp = (now or datetime.now()).strftime(config.TIMESTAMP_FORMAT)
+    return config.FINAL_FILENAME_PATTERN.format(name=base_name, timestamp=timestamp)
+
+
+def build_phase2_warnings_filename(base_name: str, now: datetime | None = None) -> str:
+    """'Instacart' -> 'phase2_warnings_Instacart_2026-09-28_1430.csv' (given now)."""
+    timestamp = (now or datetime.now()).strftime(config.TIMESTAMP_FORMAT)
+    return config.PHASE2_WARNINGS_FILENAME_PATTERN.format(name=base_name, timestamp=timestamp)
+
+
 def to_csv_bytes(df) -> bytes:
     """df.to_csv(index=False).encode(config.OUTPUT_ENCODING).
 

@@ -1,3 +1,3 @@
 streamlit>=1.30      # file_uploader(accept_multiple_files), data_editor, download_button
 pandas>=2.0          # DataFrame read/align/concat/write
-openpyxl>=3.1        # pandas .xlsx engine
+openpyxl>=3.1        # pandas .xlsx engine + template writer (template_builder.py)

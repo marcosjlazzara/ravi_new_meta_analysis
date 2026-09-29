@@ -6,10 +6,11 @@
 items 1, 2, 3, 5, 6, 7 and 8 remain open with the requester and are marked at their
 implementation sites in code. Item 10 is a note, not a decision.
 
-**Not yet done:** interactive verification of `app.py` STEP 2-6 (Streamlit's test harness
-cannot drive `st.file_uploader`, so those paths have never executed — see the handoff
-checklist in `META_BRIEF.md`), and requester sign-off on the four deviations in section 7
-of the brief.
+**Phase 2 amended some contracts in this document. See section 10 before relying on
+section 3, section 4 edge case 14, or the section 9 column-literal rule.**
+
+**Browser-verified 2026-09-29** (STEPs 2–9, on the Phase 2 code) by Marcos.
+**Not yet done:** requester sign-off on the four deviations in section 7 of the brief.
 
 ---
 
@@ -654,3 +655,28 @@ mark it with the DESIGN DEFAULT comment, and do not invent a different one.
 QC CHECKPOINT: qc-reviewer after EVERY phase, not only at the end.
 The Phase 1 precision round-trip is a blocking gate.
 ```
+
+---
+
+## 10. Phase 2 amendments
+
+Added 2026-09-29, after the Phase 2 build (branch `phase2`) passed QC and browser verification.
+Phase 2 is designed in `PHASE2_ARCHITECTURE.md`; this section lists only the places where a
+**Phase 1** contract in this document changed, so nothing above is silently stale.
+Decision numbers `P#` refer to `PHASE2_BRIEF.md`.
+
+| Where in this doc | What changed | Detail |
+|---|---|---|
+| Section 4, edge case 14 | **Superseded by P4.** An existing master with zero study files now **runs**: Run is enabled, `st.info(config.MSG_MASTER_ONLY_RUN)` is shown, and the result is 0 appended with `master_df` equal to the master. The first-master path is unchanged; it still needs at least one other file. | `study_processor.is_run_ready(master, study_item_count)` replaces `master is not None and len(study_items) > 0` in STEP 5. `process_batch` itself did not change. `PHASE2_ARCHITECTURE.md` section 5 |
+| `study_processor.py`, `process_file` | New **step 3b**, after the duplicate-columns check and before the column-mismatch check. A file whose headers carry any Phase 2 calculated or merged column is `rejected` with `REASON_PHASE2_OUTPUT` (P3). `missing_cols`/`extra_cols` stay empty, so it is still true that only step 4 populates them. | `schema.find_phase2_output_headers`. `PHASE2_ARCHITECTURE.md` sections 1.7, 4 |
+| `models.py`, `MasterCandidate` | New field `is_phase2_output: bool = False`. `is_valid` is now `readable and has_study_name and not is_phase2_output`. | `PHASE2_ARCHITECTURE.md` section 1.2 |
+| Section 3, master detection contract | Extended by P3. A `master_*` file that is Phase 2 output is not a valid candidate: STEP 2 warns. If another valid master exists, the file goes to the study pool and step 3b rejects it. If none exists, `master_detector.first_master_slot_allowed()` is False, STEP 2b is not rendered and Run stays disabled. Both master-context builders also refuse Phase 2 output with `SchemaError(REASON_PHASE2_OUTPUT)`. That is the existing "master cannot be loaded" exception, now covering a second case. | `PHASE2_ARCHITECTURE.md` sections 1.6, 4 |
+| `file_reader.py` | New `read_raw_grid(filename, data)`: a header-less read that returns the header row exactly as typed, with no pandas `Unnamed: n` / `.1` mangling. Used by the Phase 2 template upload. `read_table` is unchanged. Still `dtype=str` on every read. | `PHASE2_ARCHITECTURE.md` section 1.5 |
+| Section 9 handoff, hard rule on column literals | **Amended.** Column names may appear as literals only in `config.py`, not "only `Study_Name`". Phase 2 must name its source columns (`dependent_variable`, `CNT_EXPSD_HH`, `ADJ_MEAN_EXPSD_GRP`, `MODEL_DESC`, `Model`) and match them by name, never by letter. The 31-name reference list is still in `test_meta_pipeline.py` only. | `CLAUDE.md` rule 4 |
+| Section 5, precision contract | **Extended, not relaxed.** Source values still pass through byte-exact. The 8 calculated columns are computed with `decimal.Decimal` on parsed copies, never float, in `numeric.py`, the only module that touches `decimal`. | `CLAUDE.md` rule 2. `PHASE2_ARCHITECTURE.md` section 2 |
+| `test_meta_pipeline.py` | The section 1 check "config.py carries no list of the 32 data columns" is **replaced**. The set of reference column names appearing anywhere in `config` must be exactly the 5 calculation source columns, and no single config sequence may hold more than 3 of them. New sections: **10** AST rule scans (rules 2, 3 and 4, plus the openpyxl import location), **11** master-only Run and P3 detection, **12** template, **13a** calculations with synthetic data, **13b** comparison against Ravi's reference workbook, **14** upload validation, merge and warnings. Total: 236 checks became 556, then 561 with the Q16 banner checks in section 8. | `PHASE2_ARCHITECTURE.md` section 10 |
+| Section 2, STEP 6 | **New, Q16 (2026-09-29).** When any file is rejected, a warning banner at the top of Results lists every rejected file with its reason, and tells the user to fix the files and run again. Built by `report.rejected_files_message` from `config.MSG_FILES_REJECTED_ONE` / `_MANY`. The count uses the same rule as `BatchResult.rejected`. Behaviour is unchanged: rejected files still don't block the rest of the batch (Q15: the schema stays locked by choice). | `QUESTIONS_FOR_RAVI.md` Q15/Q16 |
+
+New Phase 2 modules (`numeric.py`, `calculations.py`, `template_builder.py`,
+`metadata_upload.py`, `final_builder.py`) and the Phase 2 STEPs 7–9 in `app.py` are specified
+in `PHASE2_ARCHITECTURE.md` alone.

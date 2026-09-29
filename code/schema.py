@@ -94,6 +94,43 @@ def tag_study_name(df: pd.DataFrame, study_name: str, column: str) -> pd.DataFra
     return result
 
 
+_ZERO_WIDTH_RE = re.compile("[" + re.escape(config.ZERO_WIDTH_CHARS) + "]")
+
+
+def normalize_header(name: str) -> str:
+    """Remove every char in config.ZERO_WIDTH_CHARS, then normalize_column().
+
+    Used by all Phase 2 header matching (P3 signature, upload headers,
+    reserved names). normalize_column() alone is not enough here — Ravi's
+    original headers end in a zero-width character (U+200B), which
+    str.strip() does not remove (finding 2 in PHASE2_ARCHITECTURE.md
+    section 0).
+    """
+    return normalize_column(_ZERO_WIDTH_RE.sub("", name))
+
+
+def find_phase2_output_headers(columns: Sequence[str]) -> list[str]:
+    """Verbatim entries of `columns` whose normalize_header() equals the
+    normalize_header() of any config.PHASE2_OUTPUT_SIGNATURE_HEADERS entry,
+    in source order. [] means 'not Phase 2 output' (P3).
+    """
+    signature_keys = {normalize_header(h) for h in config.PHASE2_OUTPUT_SIGNATURE_HEADERS}
+    return [c for c in columns if normalize_header(c) in signature_keys]
+
+
+def column_letter(index: int) -> str:
+    """0-based column index -> spreadsheet letters (0 -> 'A', 7 -> 'H', 26 -> 'AA').
+
+    For warning text only — never used for lookup (P24: names, never letters).
+    """
+    letters = ""
+    n = index + 1
+    while n > 0:
+        n, remainder = divmod(n - 1, 26)
+        letters = chr(ord("A") + remainder) + letters
+    return letters
+
+
 def align_to_master(df: pd.DataFrame, master_columns: Sequence[str]) -> pd.DataFrame:
     """Rename the file's columns to their verbatim master equivalents (matched
     on normalized name) and reindex to master order. Values are NEVER touched.

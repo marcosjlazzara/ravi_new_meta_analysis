@@ -33,12 +33,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SAMPLES_DIR = ROOT / "Samples"
 FIXTURES_DIR = ROOT / "test_fixtures"
+CODE_DIR = Path(__file__).resolve().parent
 
 # ---------------------------------------------------------------------------
 # Helpers — copied in style from new_pg_antara_6_24/code/test_pipeline.py
 # ---------------------------------------------------------------------------
 _passed = 0
 _failed = 0
+_skipped = 0
 
 
 def check(label: str, result: bool, detail: str = "") -> None:
@@ -54,10 +56,41 @@ def check(label: str, result: bool, detail: str = "") -> None:
         _failed += 1
 
 
+def skip(label: str, detail: str = "") -> None:
+    """Marks a check as skipped rather than passed/failed (Stage 3's
+    reference-workbook comparison, section 13b, is the first user of this).
+    Never counted as passed or failed.
+    """
+    global _skipped
+    line = f"[SKIPPED] {label}"
+    if detail:
+        line += f" — {detail}"
+    print(line)
+    _skipped += 1
+
+
 def section(title: str) -> None:
     print(f"\n{'='*60}")
     print(f"  {title}")
     print(f"{'='*60}")
+
+
+# ---------------------------------------------------------------------------
+# The 31-name reference schema. Defined HERE AND NOWHERE ELSE
+# (ARCHITECTURE.md section 1 / META_BRIEF.md section 4). config.py must never
+# carry this list. Moved above Section 1 (Stage 1) so the amended Section 1
+# config-sanity check (10.1a/b) can use it too.
+# ---------------------------------------------------------------------------
+REFERENCE_STUDY_COLUMNS: list[str] = [
+    "MODEL_DESC", "Model", "TIME_AGG_PERIOD", "START_WEEK", "END_WEEK", "dependent_variable",
+    "CNT_EXPSD_HH", "UDJ_AVG_EXPSD_HH_PRE", "UDJ_AVG_CNTRL_HH_PRE", "UDJ_AVG_EXPSD_HH_PST",
+    "UDJ_AVG_CNTRL_HH_PST", "UDJ_DOD_EFFCT", "UDJ_DIFF_EFFCT", "ADJ_MEAN_EXPSD_GRP",
+    "ADJ_MEAN_CNTRL_GRP", "ADJ_DOD_EFFCT", "TWOTAIL_PVAL", "ONETAIL_PVAL", "ABS_DIFF", "DOL_DIFF",
+    "ONETAIL_80_PCT_INTRVL_UB", "ONETAIL_80_PCT_INTRVL_LB", "ONETAIL_90_PCT_INTRVL_UB",
+    "ONETAIL_90_PCT_INTRVL_LB", "TWOTAIL_80_PCT_INTRVL_UB", "TWOTAIL_80_PCT_INTRVL_LB",
+    "TWOTAIL_90_PCT_INTRVL_UB", "TWOTAIL_90_PCT_INTRVL_LB", "CNT_IMPRESSIONS", "CNT_Model_HH",
+    "Channels",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -90,13 +123,55 @@ check(
     config.EXCEPTION_REPORT_COLUMNS == ["file", "status", "reason", "missing_cols", "extra_cols"],
     str(config.EXCEPTION_REPORT_COLUMNS),
 )
+
+# --- (10.1) Replaces the old "config.py carries no list of the 32 data
+# columns" check, which would fail on Phase 2's CALCULATED_HEADERS (8
+# entries) and TEMPLATE_HEADERS (7 entries). Amended rule 4: column names
+# appear as literals ONLY in config.py — so config.py legitimately DOES
+# carry the P24 source-column names (P24 requires config.py to be the only
+# place they live). What must still hold: the FULL 31-name reference schema
+# never leaks into config.py, and no single config sequence smuggles in more
+# than the 3 names MASTER_LOOKALIKE_COLUMNS legitimately needs (P11).
+def _walk_config_strings(value: object) -> set[str]:
+    """Recursively collect every str leaf from a config value: scalars and
+    elements of sequences, including nested sequences."""
+    if isinstance(value, str):
+        return {value}
+    if isinstance(value, (list, tuple, set, frozenset)):
+        found: set[str] = set()
+        for item in value:
+            found |= _walk_config_strings(item)
+        return found
+    return set()
+
+
+def _config_public_values() -> list[object]:
+    return [getattr(config, name) for name in dir(config) if not name.startswith("_")]
+
+
+_config_string_pool: set[str] = set()
+for _v in _config_public_values():
+    _config_string_pool |= _walk_config_strings(_v)
+
+_reference_hits_in_config = _config_string_pool & set(REFERENCE_STUDY_COLUMNS)
 check(
-    "config.py carries no list of the 32 data columns",
-    not any(
-        isinstance(getattr(config, name), (list, tuple)) and len(getattr(config, name)) > 5
-        for name in dir(config)
-        if not name.startswith("_") and name != "ACCEPTED_EXTENSIONS"
-    ),
+    "(10.1a) config.py string values intersect REFERENCE_STUDY_COLUMNS on exactly the 5 "
+    "P24 source-column names, never the other 26",
+    _reference_hits_in_config
+    == {"MODEL_DESC", "Model", "dependent_variable", "CNT_EXPSD_HH", "ADJ_MEAN_EXPSD_GRP"},
+    str(sorted(_reference_hits_in_config)),
+)
+
+_max_reference_names_in_one_sequence = 0
+for _v in _config_public_values():
+    if isinstance(_v, (list, tuple, set, frozenset)):
+        _count = sum(1 for _s in _walk_config_strings(_v) if _s in REFERENCE_STUDY_COLUMNS)
+        _max_reference_names_in_one_sequence = max(_max_reference_names_in_one_sequence, _count)
+check(
+    "(10.1b) no single config sequence contains more than 3 reference names "
+    "(MASTER_LOOKALIKE_COLUMNS legitimately carries exactly 3 — P11)",
+    _max_reference_names_in_one_sequence <= 3,
+    str(_max_reference_names_in_one_sequence),
 )
 
 # --- models sanity ---
@@ -127,18 +202,6 @@ check(
 # ---------------------------------------------------------------------------
 section("2. Reading Real Sample Files")
 
-# The 31-name reference schema. Defined HERE AND NOWHERE ELSE (ARCHITECTURE.md
-# section 1 / META_BRIEF.md section 4). config.py must never carry this list.
-REFERENCE_STUDY_COLUMNS: list[str] = [
-    "MODEL_DESC", "Model", "TIME_AGG_PERIOD", "START_WEEK", "END_WEEK", "dependent_variable",
-    "CNT_EXPSD_HH", "UDJ_AVG_EXPSD_HH_PRE", "UDJ_AVG_CNTRL_HH_PRE", "UDJ_AVG_EXPSD_HH_PST",
-    "UDJ_AVG_CNTRL_HH_PST", "UDJ_DOD_EFFCT", "UDJ_DIFF_EFFCT", "ADJ_MEAN_EXPSD_GRP",
-    "ADJ_MEAN_CNTRL_GRP", "ADJ_DOD_EFFCT", "TWOTAIL_PVAL", "ONETAIL_PVAL", "ABS_DIFF", "DOL_DIFF",
-    "ONETAIL_80_PCT_INTRVL_UB", "ONETAIL_80_PCT_INTRVL_LB", "ONETAIL_90_PCT_INTRVL_UB",
-    "ONETAIL_90_PCT_INTRVL_LB", "TWOTAIL_80_PCT_INTRVL_UB", "TWOTAIL_80_PCT_INTRVL_LB",
-    "TWOTAIL_90_PCT_INTRVL_UB", "TWOTAIL_90_PCT_INTRVL_LB", "CNT_IMPRESSIONS", "CNT_Model_HH",
-    "Channels",
-]
 check("REFERENCE_STUDY_COLUMNS has exactly 31 entries", len(REFERENCE_STUDY_COLUMNS) == 31, f"got {len(REFERENCE_STUDY_COLUMNS)}")
 
 STUDY_FILES: list[str] = [
@@ -1690,6 +1753,47 @@ check(
     summary["Total records in master"] == len(full_batch_result.master_df),
 )
 
+# --- Q16: the rejected-files banner (agreed 2026-09-29) ----------------------
+from report import rejected_files_message
+
+check(
+    "rejected_files_message: '' when nothing is rejected (real 10-file batch)",
+    rejected_files_message(full_batch_result.outcomes) == "",
+    rejected_files_message(full_batch_result.outcomes),
+)
+_one_banner = rejected_files_message(sample_outcomes)
+check(
+    "rejected_files_message: one rejection -> exactly MSG_FILES_REJECTED_ONE with '`file` (reason)'",
+    _one_banner == config.MSG_FILES_REJECTED_ONE.format(files="`bad_study.csv` (column mismatch)"),
+    _one_banner,
+)
+check(
+    "rejected_files_message: skipped and appended files are not listed",
+    "ok_study.csv" not in _one_banner and "dup_study.csv" not in _one_banner,
+    _one_banner,
+)
+# Two real fixture rejections (section 7), then a blank-name one, in outcome order.
+_blank_outcome = FileOutcome(
+    file="no_name.csv", index=9, status=config.STATUS_REJECTED, reason=config.REASON_BLANK_STUDY_NAME,
+    missing_cols=[], extra_cols=[], study_name="", rows=0,
+)
+_many_outcomes = [reject_missing_outcome, sample_outcomes[0], reject_extra_outcome, _blank_outcome]
+_many_banner = rejected_files_message(_many_outcomes)
+_many_expected_files = ", ".join(
+    f"`{o.file}` ({o.reason})" for o in (reject_missing_outcome, reject_extra_outcome, _blank_outcome)
+)
+check(
+    "rejected_files_message: 3 rejections -> exactly MSG_FILES_REJECTED_MANY, n=3, files in outcome order",
+    _many_banner == config.MSG_FILES_REJECTED_MANY.format(n=3, files=_many_expected_files),
+    _many_banner,
+)
+check(
+    "rejected_files_message: the count matches the 'Files rejected' rule (status == rejected)",
+    sum(1 for o in _many_outcomes if o.status == config.STATUS_REJECTED) == 3
+    and reject_missing_outcome.status == config.STATUS_REJECTED
+    and reject_extra_outcome.status == config.STATUS_REJECTED,
+)
+
 # ---------------------------------------------------------------------------
 # SECTION 9 — csv_writer.py and the Phase 5 QC checkpoint
 # ---------------------------------------------------------------------------
@@ -1836,11 +1940,2313 @@ else:
     check("precision checkpoint: field-by-field comparison", False, "skipped — row counts did not match")
 
 # ---------------------------------------------------------------------------
+# SECTION 10 — Rule scans (Stage 1 — guards every later Phase 2 stage)
+# ---------------------------------------------------------------------------
+section("10. Rule Scans (AST)")
+
+_PY_FILES = sorted(CODE_DIR.glob("*.py"))
+_RULE4_EXEMPT = {"config.py", "test_meta_pipeline.py"}
+_RULE2_TEST_INCLUDED = True  # rule 2 scans every file, including this one
+_RULE3_EXEMPT = {"test_meta_pipeline.py"}
+_OPENPYXL_ALLOWED = {"template_builder.py", "test_meta_pipeline.py"}
+
+
+# --- Rule 4: column-name literals appear ONLY in config.py ------------------
+def _rule4_hits(source: str, banned: set[str]) -> list[tuple[int, str]]:
+    """Every ast.Constant str equal EXACTLY (case-sensitive) to a banned name,
+    excluding bare string statements (docstrings: an ast.Expr whose value is
+    that same Constant node).
+    """
+    tree = ast.parse(source)
+    docstring_ids = {
+        id(node.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Constant)
+        and isinstance(node.value.value, str)
+    }
+    hits: list[tuple[int, str]] = []
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Constant)
+            and isinstance(node.value, str)
+            and id(node) not in docstring_ids
+            and node.value in banned
+        ):
+            hits.append((node.lineno, node.value))
+    return hits
+
+
+_rule4_banned_names = (
+    set(REFERENCE_STUDY_COLUMNS)
+    | {config.STUDY_NAME_COL}
+    | set(config.TEMPLATE_HEADERS)
+    | set(config.CALCULATED_HEADERS)
+    | set(config.LEGACY_CALCULATED_HEADERS)
+)
+
+for _py_file in _PY_FILES:
+    if _py_file.name in _RULE4_EXEMPT:
+        continue
+    _hits = _rule4_hits(_py_file.read_text(encoding="utf-8"), _rule4_banned_names)
+    check(
+        f"rule 4: {_py_file.name} carries no column-name literal outside config.py",
+        _hits == [],
+        str(_hits),
+    )
+
+_rule4_config_hits = _rule4_hits(
+    (CODE_DIR / "config.py").read_text(encoding="utf-8"), _rule4_banned_names
+)
+check(
+    "rule 4 non-vacuity: the same scan run on config.py finds at least 5 hits",
+    len(_rule4_config_hits) >= 5,
+    str(len(_rule4_config_hits)),
+)
+
+
+# --- Rule 2: banned numeric-coercion constructs (CLAUDE.md rule 2) ----------
+_RULE2_BANNED_ATTRS = {"to_numeric", "float64", "round"}
+_RULE2_BANNED_NAMES = {"float", "round"}
+_RULE2_BANNED_KEYWORDS = {"float_format", "converters", "parse_dates", "thousands", "decimal"}
+_RULE2_READ_FUNCS = {"read_csv", "read_excel"}
+
+
+def _rule2_hits(source: str) -> dict[str, list[int]]:
+    tree = ast.parse(source)
+    hits: dict[str, list[int]] = {
+        "banned_attr_call": [],
+        "banned_name_call": [],
+        "astype_float": [],
+        "banned_keyword": [],
+        "read_missing_dtype_str": [],
+    }
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Attribute) and func.attr in _RULE2_BANNED_ATTRS:
+            hits["banned_attr_call"].append(node.lineno)
+        if isinstance(func, ast.Name) and func.id in _RULE2_BANNED_NAMES:
+            hits["banned_name_call"].append(node.lineno)
+        if isinstance(func, ast.Attribute) and func.attr == "astype" and node.args:
+            arg = node.args[0]
+            if isinstance(arg, ast.Name) and arg.id == "float":
+                hits["astype_float"].append(node.lineno)
+            elif (
+                isinstance(arg, ast.Constant)
+                and isinstance(arg.value, str)
+                and arg.value.startswith("float")
+            ):
+                hits["astype_float"].append(node.lineno)
+        if isinstance(func, ast.Attribute) and func.attr in _RULE2_READ_FUNCS:
+            has_dtype_str = any(
+                kw.arg == "dtype" and isinstance(kw.value, ast.Name) and kw.value.id == "str"
+                for kw in node.keywords
+            )
+            if not has_dtype_str:
+                hits["read_missing_dtype_str"].append(node.lineno)
+        for kw in node.keywords:
+            if kw.arg in _RULE2_BANNED_KEYWORDS:
+                hits["banned_keyword"].append(node.lineno)
+    return hits
+
+
+for _py_file in _PY_FILES:
+    _hits2 = _rule2_hits(_py_file.read_text(encoding="utf-8"))
+    _flat_hits2 = [h for hits in _hits2.values() for h in hits]
+    check(
+        f"rule 2: {_py_file.name} carries no banned numeric-coercion construct",
+        _flat_hits2 == [],
+        str(_hits2) if _flat_hits2 else "",
+    )
+
+_RULE2_PROBE_SOURCE = '''
+import pandas as pd
+
+a = pd.to_numeric(x)
+b = c.round()
+d = float(y)
+e = round(z)
+f = df.astype(float)
+g = df2.astype("float64")
+h = pd.read_csv("f.csv", converters={})
+i = pd.read_csv("g.csv", parse_dates=["d"])
+j = pd.read_csv("h.csv", thousands=",")
+k = pd.read_excel("i.xlsx", float_format="%.2f")
+m = pd.read_csv("j.csv", decimal=",")
+n = pd.read_csv("k.csv")
+o = pd.read_csv("l.csv", dtype=str)
+'''
+_rule2_probe_hits = _rule2_hits(_RULE2_PROBE_SOURCE)
+check(
+    "rule 2 non-vacuity: a small in-memory source string containing each banned form "
+    "yields at least one hit in every category",
+    all(len(v) >= 1 for v in _rule2_probe_hits.values()),
+    str(_rule2_probe_hits),
+)
+
+
+# --- Rule 3: no filesystem writes anywhere ----------------------------------
+_RULE3_BANNED_ATTRS = {"write_text", "write_bytes", "to_excel", "mkdir", "makedirs"}
+
+
+def _rule3_hits(source: str) -> list[int]:
+    tree = ast.parse(source)
+    hits: list[int] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if isinstance(func, ast.Name) and func.id == "open":
+            hits.append(node.lineno)
+        if isinstance(func, ast.Attribute) and func.attr in _RULE3_BANNED_ATTRS:
+            hits.append(node.lineno)
+        if isinstance(func, ast.Attribute) and func.attr == "to_csv":
+            has_positional = len(node.args) > 0
+            has_path_kw = any(kw.arg == "path_or_buf" for kw in node.keywords)
+            if has_positional or has_path_kw:
+                hits.append(node.lineno)
+        if isinstance(func, ast.Attribute) and func.attr == "save" and node.args:
+            if not isinstance(node.args[0], ast.Name):
+                hits.append(node.lineno)
+    return hits
+
+
+for _py_file in _PY_FILES:
+    if _py_file.name in _RULE3_EXEMPT:
+        continue
+    _hits3 = _rule3_hits(_py_file.read_text(encoding="utf-8"))
+    check(
+        f"rule 3: {_py_file.name} performs no filesystem write",
+        _hits3 == [],
+        str(_hits3),
+    )
+
+_RULE3_PROBE_SOURCE = '''
+f = open("x.txt", "w")
+p.write_text("x")
+q.write_bytes(b"x")
+df.to_excel("out.xlsx")
+os.mkdir("d")
+os.makedirs("d")
+df.to_csv("out.csv")
+df.to_csv(path_or_buf="out.csv")
+wb.save("out.xlsx")
+wb.save(buf)
+'''
+_rule3_probe_hits = _rule3_hits(_RULE3_PROBE_SOURCE)
+check(
+    "rule 3 non-vacuity: a small in-memory source string containing each banned write form "
+    "is caught (9 hits), and wb.save(buf) with a Name argument is correctly NOT flagged",
+    len(_rule3_probe_hits) == 9,
+    str(_rule3_probe_hits),
+)
+
+
+# --- openpyxl imported only by template_builder.py (and the test file) -----
+def _imports_openpyxl(source: str) -> bool:
+    tree = ast.parse(source)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import) and any(
+            "openpyxl" in (alias.name or "") for alias in node.names
+        ):
+            return True
+        if isinstance(node, ast.ImportFrom) and node.module and "openpyxl" in node.module:
+            return True
+    return False
+
+
+for _py_file in _PY_FILES:
+    if _py_file.name in _OPENPYXL_ALLOWED:
+        continue
+    check(
+        f"openpyxl import: {_py_file.name} does not import openpyxl",
+        not _imports_openpyxl(_py_file.read_text(encoding="utf-8")),
+    )
+
+# ---------------------------------------------------------------------------
+# SECTION 11 — Stage 1: master-only Run and P3 detection
+# ---------------------------------------------------------------------------
+section("11. Stage 1 — Master-Only Run and P3 Detection")
+
+from study_processor import is_run_ready
+from master_detector import first_master_slot_allowed
+from schema import find_phase2_output_headers
+from models import MasterCandidate
+
+# --- is_run_ready truth table -----------------------------------------------
+_existing_master_probe = _fresh_master()
+_first_master_probe = build_master_context_from_first_file(
+    UploadedItem(
+        index=0, name="Instacart_Bounty_scored.csv",
+        data=(SAMPLES_DIR / "Instacart_Bounty_scored.csv").read_bytes(),
+    ),
+    "Instacart",
+)
+
+_is_run_ready_cases = [
+    (None, 0, False),
+    (None, 3, False),
+    (_existing_master_probe, 0, True),
+    (_existing_master_probe, 2, True),
+    (_first_master_probe, 0, False),
+    (_first_master_probe, 1, True),
+]
+for _master_arg, _count_arg, _expected in _is_run_ready_cases:
+    _label = (
+        f"is_run_ready({'None' if _master_arg is None else ('existing' if not _master_arg.created_this_run else 'first-master')}, "
+        f"{_count_arg}) == {_expected}"
+    )
+    check(_label, is_run_ready(_master_arg, _count_arg) is _expected)
+
+# --- process_batch([master_item], existing_ctx, {}) with zero study items ---
+# The master item's index must match master.source_index for process_batch's
+# structural skip (item.index == master.source_index) to exclude it — hence
+# building the context from THIS item, not via _fresh_master()'s index=999.
+_zero_study_master_item = UploadedItem(
+    index=0, name=MASTER_FILE_NAME, data=(SAMPLES_DIR / MASTER_FILE_NAME).read_bytes()
+)
+_zero_study_master = build_master_context_from_existing(_zero_study_master_item)
+_zero_study_result = process_batch([_zero_study_master_item], _zero_study_master, {})
+check(
+    "process_batch with zero study items: appended == 0",
+    _zero_study_result.appended == 0,
+    _zero_study_result.appended,
+)
+check(
+    "process_batch with zero study items: outcomes == []",
+    _zero_study_result.outcomes == [],
+    str(_zero_study_result.outcomes),
+)
+check(
+    "process_batch with zero study items: total_records == 52",
+    _zero_study_result.total_records == 52,
+    _zero_study_result.total_records,
+)
+check(
+    "process_batch with zero study items: master_df equal cell-for-cell to the source master frame",
+    _zero_study_result.master_df.equals(_zero_study_master.frame),
+)
+
+_zero_study_excluded_outcome = FileOutcome(
+    file="Master_Unselected.csv", index=1, status=config.STATUS_SKIPPED,
+    reason=config.REASON_NOT_SELECTED_MASTER, missing_cols=[], extra_cols=[], study_name="", rows=0,
+)
+_zero_study_result_with_excluded = process_batch(
+    [_zero_study_master_item], _zero_study_master, {}, excluded_outcomes=[_zero_study_excluded_outcome]
+)
+check(
+    "process_batch with zero study items + an unselected-master excluded_outcome: "
+    "outcomes == [that outcome]",
+    _zero_study_result_with_excluded.outcomes == [_zero_study_excluded_outcome],
+    str(_zero_study_result_with_excluded.outcomes),
+)
+check(
+    "process_batch with zero study items + an unselected-master excluded_outcome: skipped == 1",
+    _zero_study_result_with_excluded.skipped == 1,
+    _zero_study_result_with_excluded.skipped,
+)
+
+# --- find_phase2_output_headers ----------------------------------------------
+check(
+    "find_phase2_output_headers([]) on the real master's columns is []",
+    find_phase2_output_headers(list(_zero_study_master.frame.columns)) == [],
+    str(find_phase2_output_headers(list(_zero_study_master.frame.columns))),
+)
+for _study_name in STUDY_FILES:
+    _study_df = read_table(_study_name, (SAMPLES_DIR / _study_name).read_bytes())
+    _hits_study = find_phase2_output_headers(list(_study_df.columns))
+    check(
+        f"find_phase2_output_headers([]) on {_study_name}'s columns is []",
+        _hits_study == [],
+        str(_hits_study),
+    )
+
+_calc_header_variants = [
+    list(config.CALCULATED_HEADERS),
+    [h + "​" for h in config.CALCULATED_HEADERS],
+    [h.upper() for h in config.CALCULATED_HEADERS],
+]
+for _variant in _calc_header_variants:
+    check(
+        f"find_phase2_output_headers detects all {len(config.CALCULATED_HEADERS)} calculated headers "
+        f"(variant: {_variant[0]!r})",
+        find_phase2_output_headers(_variant) == _variant,
+        str(find_phase2_output_headers(_variant)),
+    )
+
+check(
+    "find_phase2_output_headers detects the legacy Instacart header",
+    find_phase2_output_headers(list(config.LEGACY_CALCULATED_HEADERS))
+    == list(config.LEGACY_CALCULATED_HEADERS),
+)
+check(
+    "find_phase2_output_headers detects a merged template header (Read_Type)",
+    find_phase2_output_headers([config.TEMPLATE_READ_TYPE]) == [config.TEMPLATE_READ_TYPE],
+)
+
+# --- synthetic Master_File_Test: real master + calculated headers ----------
+_synthetic_master_df = _zero_study_master.frame.copy()
+for _i, _header in enumerate(config.CALCULATED_HEADERS):
+    _synthetic_master_df[_header] = ""
+_synthetic_master_bytes = to_csv_bytes(_synthetic_master_df)
+_synthetic_master_name = "Master_File_Test_2026-09-28_1200.csv"
+_synthetic_master_item = UploadedItem(index=0, name=_synthetic_master_name, data=_synthetic_master_bytes)
+
+_synthetic_candidates = find_master_candidates([_synthetic_master_item])
+check(
+    "synthetic Master_File_Test: find_master_candidates gives is_phase2_output True",
+    len(_synthetic_candidates) == 1 and _synthetic_candidates[0].is_phase2_output is True,
+    str(_synthetic_candidates),
+)
+check(
+    "synthetic Master_File_Test: is_valid False, readable True",
+    len(_synthetic_candidates) == 1
+    and _synthetic_candidates[0].is_valid is False
+    and _synthetic_candidates[0].readable is True,
+    str(_synthetic_candidates),
+)
+
+try:
+    build_master_context_from_existing(_synthetic_master_item)
+    check("synthetic Master_File_Test: build_master_context_from_existing raises SchemaError", False)
+except SchemaError as e:
+    check(
+        "synthetic Master_File_Test: build_master_context_from_existing raises "
+        "SchemaError(REASON_PHASE2_OUTPUT) with MSG_PHASE2_OUTPUT",
+        e.reason == config.REASON_PHASE2_OUTPUT and str(e) == config.MSG_PHASE2_OUTPUT,
+        f"reason={e.reason!r} str={str(e)!r}",
+    )
+except Exception as e:
+    check(
+        "synthetic Master_File_Test: build_master_context_from_existing raises SchemaError",
+        False, f"wrong exception type: {type(e).__name__}: {e}",
+    )
+
+try:
+    build_master_context_from_first_file(_synthetic_master_item, "Test")
+    check("synthetic Master_File_Test: build_master_context_from_first_file raises SchemaError", False)
+except SchemaError as e:
+    check(
+        "synthetic Master_File_Test: build_master_context_from_first_file raises "
+        "SchemaError(REASON_PHASE2_OUTPUT) with MSG_PHASE2_OUTPUT",
+        e.reason == config.REASON_PHASE2_OUTPUT and str(e) == config.MSG_PHASE2_OUTPUT,
+        f"reason={e.reason!r} str={str(e)!r}",
+    )
+except Exception as e:
+    check(
+        "synthetic Master_File_Test: build_master_context_from_first_file raises SchemaError",
+        False, f"wrong exception type: {type(e).__name__}: {e}",
+    )
+
+check(
+    "first_master_slot_allowed is False when the synthetic Phase 2 output candidate is present",
+    first_master_slot_allowed(_synthetic_candidates) is False,
+)
+check(
+    "first_master_slot_allowed is True for an ordinary candidate list",
+    first_master_slot_allowed(
+        [MasterCandidate(index=0, name="Master_X.csv", readable=True, has_study_name=True, error="")]
+    )
+    is True,
+)
+
+# --- process_file on the synthetic bytes as a study: REASON_PHASE2_OUTPUT --
+_synthetic_as_study_item = UploadedItem(index=0, name="Study_Test.csv", data=_synthetic_master_bytes)
+_, _synthetic_study_outcome = process_file(
+    _synthetic_as_study_item, edge_case_master, "Study_Test", set()
+)
+check(
+    "process_file on Phase 2 output bytes as a study: rejected / REASON_PHASE2_OUTPUT",
+    _synthetic_study_outcome.status == config.STATUS_REJECTED
+    and _synthetic_study_outcome.reason == config.REASON_PHASE2_OUTPUT,
+    str(_synthetic_study_outcome),
+)
+check(
+    "process_file on Phase 2 output bytes as a study: missing_cols == extra_cols == []",
+    _synthetic_study_outcome.missing_cols == [] and _synthetic_study_outcome.extra_cols == [],
+)
+
+# --- order tests --------------------------------------------------------------
+# calculated headers + a duplicate column -> duplicate columns (step 3 before 3b)
+_dup_plus_calc_df = _synthetic_master_df.copy()
+_dup_plus_calc_df["MODEL_DESC_DUP_PROBE"] = _dup_plus_calc_df["MODEL_DESC"]
+_dup_plus_calc_bytes_frame = _dup_plus_calc_df.rename(
+    columns={"MODEL_DESC_DUP_PROBE": "Model_Desc"}
+)
+_dup_plus_calc_bytes = to_csv_bytes(_dup_plus_calc_bytes_frame)
+_dup_plus_calc_item = UploadedItem(index=0, name="Study_DupPlusCalc.csv", data=_dup_plus_calc_bytes)
+_, _dup_plus_calc_outcome = process_file(
+    _dup_plus_calc_item, edge_case_master, "Study_DupPlusCalc", set()
+)
+check(
+    "order test: calculated headers + a duplicate column gives REASON_DUPLICATE_COLUMNS "
+    "(step 3 fires before step 3b)",
+    _dup_plus_calc_outcome.status == config.STATUS_REJECTED
+    and _dup_plus_calc_outcome.reason == config.REASON_DUPLICATE_COLUMNS,
+    str(_dup_plus_calc_outcome),
+)
+
+# calculated headers + a missing master column -> REASON_PHASE2_OUTPUT (3b before 4)
+_missing_plus_calc_df = _synthetic_master_df.drop(columns=["ABS_DIFF"])
+_missing_plus_calc_bytes = to_csv_bytes(_missing_plus_calc_df)
+_missing_plus_calc_item = UploadedItem(
+    index=0, name="Study_MissingPlusCalc.csv", data=_missing_plus_calc_bytes
+)
+_, _missing_plus_calc_outcome = process_file(
+    _missing_plus_calc_item, edge_case_master, "Study_MissingPlusCalc", set()
+)
+check(
+    "order test: calculated headers + a missing master column gives REASON_PHASE2_OUTPUT "
+    "(step 3b fires before step 4)",
+    _missing_plus_calc_outcome.status == config.STATUS_REJECTED
+    and _missing_plus_calc_outcome.reason == config.REASON_PHASE2_OUTPUT,
+    str(_missing_plus_calc_outcome),
+)
+
+print(
+    "\n[NOTE] Regression: every existing Phase 1 fixture keeps its status and reason — "
+    "asserted implicitly by Sections 4-9 above passing unchanged."
+)
+
+# ---------------------------------------------------------------------------
+# SECTION 12 — Stage 2: template (PHASE2_ARCHITECTURE.md section 10.3)
+# ---------------------------------------------------------------------------
+section("12. Stage 2 — Template")
+
+import io as _io_s12
+from datetime import datetime as _datetime_s12
+from decimal import Decimal
+
+import openpyxl as _openpyxl_s12
+
+from numeric import NotANumber, format_number, format_rounded, is_plain_number, parse_number
+from template_builder import build_template_bytes, list_template_studies
+from csv_writer import build_template_filename
+
+# --- numeric.format_number (10.4 first bullet, applies to Stage 2) ----------
+_format_number_cases = [
+    ("500.0", "500"),
+    ("2.4E+6", "2400000"),
+    ("1E-7", "0.0000001"),
+    ("-0.0", "0"),
+    ("0.000100", "0.0001"),
+    ("438486.7835619480", "438486.783561948"),
+]
+for _src, _expected in _format_number_cases:
+    _got = format_number(Decimal(_src))
+    check(f"format_number(Decimal({_src!r})) == {_expected!r}", _got == _expected, _got)
+
+# --- numeric.parse_number ----------------------------------------------------
+check(
+    "parse_number(' 1.5 ') == Decimal('1.5')",
+    parse_number(" 1.5 ") == Decimal("1.5"),
+    str(parse_number(" 1.5 ")),
+)
+check("parse_number('') is None", parse_number("") is None)
+check("parse_number('  ') is None", parse_number("  ") is None)
+
+# Section 7.4's warn list — every one must raise NotANumber via parse_number,
+# and is_plain_number must be False for every one of them.
+_numeric_warn_examples = [
+    "1,500", "$3.49", "25%", "abc", "+5", "1.2.3", "3,49", "NaN", "inf", "1 000",
+]
+for _bad in _numeric_warn_examples:
+    try:
+        parse_number(_bad)
+        check(f"parse_number({_bad!r}) raises NotANumber", False, "no exception was raised")
+    except NotANumber as e:
+        check(
+            f"parse_number({_bad!r}) raises NotANumber(.text == stripped input)",
+            e.text == _bad.strip(),
+            e.text,
+        )
+    except Exception as e:
+        check(
+            f"parse_number({_bad!r}) raises NotANumber",
+            False,
+            f"wrong exception type: {type(e).__name__}: {e}",
+        )
+    check(f"is_plain_number({_bad!r}) is False", is_plain_number(_bad) is False)
+
+# Section 7.4's accept list — is_plain_number True, parse_number succeeds.
+_numeric_accept_examples = ["3.49", "-2", "1500000", "1.2E+06", "0.25", ".5", "5.", "1e-07", " 3.49 "]
+for _good in _numeric_accept_examples:
+    check(f"is_plain_number({_good!r}) is True", is_plain_number(_good) is True)
+    try:
+        parse_number(_good)
+        check(f"parse_number({_good!r}) does not raise", True)
+    except Exception as e:
+        check(f"parse_number({_good!r}) does not raise", False, f"{type(e).__name__}: {e}")
+
+# --- numeric.format_rounded ---------------------------------------------------
+_format_rounded_cases = [
+    ("1.945", "1.95"),
+    ("2", "2.00"),
+    ("-0.001", "0.00"),
+    ("1.005", "1.01"),
+]
+for _src, _expected in _format_rounded_cases:
+    _got = format_rounded(Decimal(_src), config.AM_ROUND_QUANTUM)
+    check(
+        f"format_rounded(Decimal({_src!r}), '0.01') == {_expected!r}",
+        _got == _expected,
+        _got,
+    )
+
+# --- template_builder.list_template_studies: hand-built case (P5) ------------
+_list_probe_df = pd.DataFrame(
+    {config.STUDY_NAME_COL: ["B", "A", "B", " A", "", "  ", "a", "=SUM(1)", "00123"]}
+)
+_expected_list_probe = ["B", "A", " A", "a", "=SUM(1)", "00123"]
+check(
+    "list_template_studies: exact-string distinct, first-appearance order, "
+    "blank-after-strip excluded",
+    list_template_studies(_list_probe_df) == _expected_list_probe,
+    str(list_template_studies(_list_probe_df)),
+)
+
+# --- list_template_studies: real sample master -------------------------------
+check(
+    "list_template_studies on the real sample master gives ['Holly_Rancher 27382_Scored']",
+    list_template_studies(master_df) == ["Holly_Rancher 27382_Scored"],
+    str(list_template_studies(master_df)),
+)
+
+# --- list_template_studies: full-batch master (Section 6) lists 10 names ----
+# Independent oracle (plain dict.fromkeys over the master column, not the
+# function under test) so this is not circular.
+_expected_full_batch_names = [
+    name
+    for name in dict.fromkeys(full_batch_result.master_df[config.STUDY_NAME_COL].tolist())
+    if name.strip() != ""
+]
+check(
+    "list_template_studies on the full-batch master (Section 6) lists 10 names, "
+    "in first-appearance order",
+    list_template_studies(full_batch_result.master_df) == _expected_full_batch_names
+    and len(_expected_full_batch_names) == 10,
+    str(list_template_studies(full_batch_result.master_df)),
+)
+
+# --- build_template_bytes: structural checks (reloaded with openpyxl) -------
+_template_names = list_template_studies(master_df)
+_template_bytes = build_template_bytes(_template_names)
+check(
+    "build_template_bytes returns bytes starting with b'PK'",
+    _template_bytes[:2] == b"PK",
+    _template_bytes[:4],
+)
+
+_reloaded_wb = _openpyxl_s12.load_workbook(_io_s12.BytesIO(_template_bytes))
+check(
+    "reloaded workbook sheetnames == [TEMPLATE_SHEET_TITLE, GLOSSARY_SHEET_TITLE]",
+    _reloaded_wb.sheetnames == [config.TEMPLATE_SHEET_TITLE, config.GLOSSARY_SHEET_TITLE],
+    str(_reloaded_wb.sheetnames),
+)
+_reloaded_ws = _reloaded_wb[config.TEMPLATE_SHEET_TITLE]
+_n_names = len(_template_names)
+
+_reloaded_header_row = [
+    _reloaded_ws.cell(row=1, column=c).value for c in range(1, len(config.TEMPLATE_HEADERS) + 1)
+]
+check(
+    "reloaded template: row 1 == TEMPLATE_HEADERS",
+    _reloaded_header_row == list(config.TEMPLATE_HEADERS),
+    str(_reloaded_header_row),
+)
+check(
+    "reloaded template: row 1 is bold",
+    all(
+        _reloaded_ws.cell(row=1, column=c).font.bold
+        for c in range(1, len(config.TEMPLATE_HEADERS) + 1)
+    ),
+)
+
+check(
+    "reloaded template: A2.. are the study names verbatim",
+    [_reloaded_ws.cell(row=r, column=1).value for r in range(2, _n_names + 2)] == _template_names,
+    str([_reloaded_ws.cell(row=r, column=1).value for r in range(2, _n_names + 2)]),
+)
+check(
+    "reloaded template: A2.. have data_type 's' (text, not formula/number)",
+    all(_reloaded_ws.cell(row=r, column=1).data_type == "s" for r in range(2, _n_names + 2)),
+)
+
+check(
+    "reloaded template: B..G body cells are empty",
+    all(
+        _reloaded_ws.cell(row=r, column=c).value is None
+        for r in range(2, _n_names + 2)
+        for c in range(2, len(config.TEMPLATE_HEADERS) + 1)
+    ),
+)
+
+check("reloaded template: protection.sheet is True", _reloaded_ws.protection.sheet is True)
+check(
+    "reloaded template: protection.password is falsy (no password set)",
+    not _reloaded_ws.protection.password,
+    repr(_reloaded_ws.protection.password),
+)
+
+check(
+    "reloaded template: column A cells are locked (default)",
+    all(
+        _reloaded_ws.cell(row=r, column=1).protection.locked is True
+        for r in range(1, _n_names + 2)
+    ),
+)
+check(
+    "reloaded template: B1:G{n+1} are unlocked",
+    all(
+        _reloaded_ws.cell(row=r, column=c).protection.locked is False
+        for r in range(1, _n_names + 2)
+        for c in range(2, len(config.TEMPLATE_HEADERS) + 1)
+    ),
+)
+
+_col_e_dim = _reloaded_ws.column_dimensions["E"]
+check(
+    "reloaded template: column E dimension min==5, max==16384, unlocked",
+    _col_e_dim.min == 5
+    and _col_e_dim.max == config.XLSX_MAX_COLUMN
+    and _col_e_dim.protection.locked is False,
+    f"min={_col_e_dim.min} max={_col_e_dim.max} locked={_col_e_dim.protection.locked}",
+)
+_col_d_dim = _reloaded_ws.column_dimensions["D"]
+check(
+    "reloaded template: column D dimension has the percent number format",
+    _col_d_dim.number_format == config.PCT_NUMBER_FORMAT,
+    _col_d_dim.number_format,
+)
+check(
+    "reloaded template: freeze_panes == 'A2'",
+    _reloaded_ws.freeze_panes == "A2",
+    _reloaded_ws.freeze_panes,
+)
+
+_reloaded_glossary = _reloaded_wb[config.GLOSSARY_SHEET_TITLE]
+check(
+    "reloaded glossary: row 1 == GLOSSARY_FIELDS_TITLE",
+    _reloaded_glossary.cell(row=1, column=1).value == config.GLOSSARY_FIELDS_TITLE,
+)
+check(
+    "reloaded glossary: row 2 == GLOSSARY_FIELD_COLUMNS",
+    [_reloaded_glossary.cell(row=2, column=c).value for c in range(1, 5)]
+    == list(config.GLOSSARY_FIELD_COLUMNS),
+)
+_glossary_field_rows_ok = all(
+    [_reloaded_glossary.cell(row=3 + i, column=c).value for c in range(1, 5)] == list(row)
+    for i, row in enumerate(config.GLOSSARY_FIELD_ROWS)
+)
+check("reloaded glossary: rows 3-9 == GLOSSARY_FIELD_ROWS", _glossary_field_rows_ok)
+check(
+    "reloaded glossary: row 11/12 == extras title/text",
+    _reloaded_glossary.cell(row=11, column=1).value == config.GLOSSARY_EXTRAS_TITLE
+    and _reloaded_glossary.cell(row=12, column=1).value == config.GLOSSARY_EXTRAS_TEXT,
+)
+check(
+    "reloaded glossary: row 14 + rows 15-18 == rules title/list",
+    _reloaded_glossary.cell(row=14, column=1).value == config.GLOSSARY_RULES_TITLE
+    and [
+        _reloaded_glossary.cell(row=15 + i, column=1).value
+        for i in range(len(config.GLOSSARY_RULES))
+    ]
+    == [f"- {r}" for r in config.GLOSSARY_RULES],
+)
+
+# --- study name with XML-illegal control characters (P2-29 / template_builder
+# module docstring FINDING): openpyxl 3.1.5 raises IllegalCharacterError on a
+# raw assignment instead of silently stripping (verified against the
+# installed openpyxl below), so template_builder._strip_illegal_xml_chars must
+# pre-empt it. build_template_bytes must not raise, and the stored cell value
+# must be the stripped name, differing from the master's original — which is
+# exactly what makes the P2-29 downstream mismatch warnings fire in Stage 4.
+_illegal_name = "Bad\x0bName\x00Study"
+_illegal_bytes = build_template_bytes([_illegal_name])
+check(
+    "build_template_bytes does not raise on a study name with XML-illegal "
+    "control characters",
+    _illegal_bytes[:2] == b"PK",
+    _illegal_bytes[:4],
+)
+_illegal_reloaded = _openpyxl_s12.load_workbook(_io_s12.BytesIO(_illegal_bytes))
+_illegal_cell_value = _illegal_reloaded[config.TEMPLATE_SHEET_TITLE]["A2"].value
+check(
+    "template A2 stores the XML-illegal-stripped name, not the master's "
+    "original verbatim value (P2-29: this mismatch is what makes the "
+    "downstream warnings fire, not silence)",
+    _illegal_cell_value == "BadNameStudy" and _illegal_cell_value != _illegal_name,
+    repr(_illegal_cell_value),
+)
+_openpyxl_raises_on_raw_illegal_assignment = False
+try:
+    _probe_wb = _openpyxl_s12.Workbook()
+    _probe_wb.active["A1"] = _illegal_name
+except Exception:
+    _openpyxl_raises_on_raw_illegal_assignment = True
+check(
+    "non-vacuity: the installed openpyxl really does raise on a raw illegal "
+    "assignment (confirms the mitigation is needed, not defensive-only)",
+    _openpyxl_raises_on_raw_illegal_assignment,
+)
+
+# --- round trip: read_table sees the template's headers/names verbatim ------
+_template_read_df = read_table("t.xlsx", _template_bytes)
+check(
+    "read_table(template) columns == TEMPLATE_HEADERS verbatim",
+    list(_template_read_df.columns) == list(config.TEMPLATE_HEADERS),
+    str(list(_template_read_df.columns)),
+)
+check(
+    "read_table(template) Study_Name values verbatim",
+    _template_read_df[config.STUDY_NAME_COL].tolist() == _template_names,
+    str(_template_read_df[config.STUDY_NAME_COL].tolist()),
+)
+
+# --- round trip (Stage 4): read_raw_grid / parse_upload on the template -----
+from file_reader import read_raw_grid as _read_raw_grid_s12
+from metadata_upload import parse_upload as _parse_upload_s12
+
+_template_grid = _read_raw_grid_s12("t.xlsx", _template_bytes)
+check(
+    "read_raw_grid(template) header row == TEMPLATE_HEADERS verbatim",
+    _template_grid[0] == list(config.TEMPLATE_HEADERS),
+    str(_template_grid[0]),
+)
+
+_template_parsed = _parse_upload_s12("t.xlsx", _template_bytes, list(master_df.columns))
+check(
+    "parse_upload(template) is accepted with 0 warnings",
+    _template_parsed.accepted and _template_parsed.warnings == [],
+    f"accepted={_template_parsed.accepted} warnings={_template_parsed.warnings}",
+)
+
+# --- csv_writer.build_template_filename --------------------------------------
+_fixed_now_s12 = _datetime_s12(2026, 9, 28, 14, 30)
+check(
+    "build_template_filename('Instacart', fixed_now) == "
+    "'studyname_master_Instacart_2026-09-28_1430.xlsx'",
+    build_template_filename("Instacart", _fixed_now_s12)
+    == "studyname_master_Instacart_2026-09-28_1430.xlsx",
+    build_template_filename("Instacart", _fixed_now_s12),
+)
+
+# ---------------------------------------------------------------------------
+# SECTION 13a — Stage 3: calculations, layer 1 (synthetic, always runs)
+# (PHASE2_ARCHITECTURE.md section 10.4)
+# ---------------------------------------------------------------------------
+section("13a. Stage 3 — Calculations, Layer 1 (Synthetic)")
+
+import decimal
+import re as _re_s13
+
+from calculations import build_calculations
+import numeric
+
+_SYNTH_COLUMNS: list[str] = [
+    config.STUDY_NAME_COL,
+    config.MODEL_DESC_COL,
+    config.MODEL_COL,
+    config.DEPENDENT_VARIABLE_COL,
+    config.CNT_EXPSD_HH_COL,
+    config.ADJ_MEAN_EXPSD_GRP_COL,
+    "RowId",
+]
+
+
+def _synth_row(study: str, model_desc: str, model: str, dep_var: str, g: str, n: str, row_id: str) -> dict:
+    return {
+        config.STUDY_NAME_COL: study,
+        config.MODEL_DESC_COL: model_desc,
+        config.MODEL_COL: model,
+        config.DEPENDENT_VARIABLE_COL: dep_var,
+        config.CNT_EXPSD_HH_COL: g,
+        config.ADJ_MEAN_EXPSD_GRP_COL: n,
+        "RowId": row_id,
+    }
+
+
+def _synth_master(rows: list[dict]) -> pd.DataFrame:
+    return pd.DataFrame(rows, columns=_SYNTH_COLUMNS).astype(str)
+
+
+def _exact_product_str(*texts: str) -> str:
+    """Independent integer-arithmetic oracle — does NOT use Decimal. Splits
+    each decimal string into an (int coefficient, scale) pair, multiplies the
+    integer coefficients, adds the scales, places the decimal point, and
+    strips representation-only trailing zeros. Not circular: numeric.py's
+    format_number/multiply are never called here.
+    """
+    sign = 1
+    coefficient_product = 1
+    scale_total = 0
+    for text in texts:
+        t = text.strip()
+        if t.startswith("-"):
+            sign = -sign
+            t = t[1:]
+        elif t.startswith("+"):
+            t = t[1:]
+        if "e" in t or "E" in t:
+            mantissa, exponent_text = _re_s13.split("[eE]", t)
+            exponent = int(exponent_text)
+        else:
+            mantissa, exponent = t, 0
+        int_part, _, frac_part = mantissa.partition(".")
+        digits = (int_part + frac_part) or "0"
+        coefficient = int(digits)
+        scale = len(frac_part) - exponent
+        coefficient_product *= coefficient
+        scale_total += scale
+    digits_str = str(coefficient_product)
+    if scale_total <= 0:
+        result = digits_str + "0" * (-scale_total)
+    else:
+        if len(digits_str) <= scale_total:
+            digits_str = "0" * (scale_total - len(digits_str) + 1) + digits_str
+        result = digits_str[:-scale_total] + "." + digits_str[-scale_total:]
+    if "." in result:
+        result = result.rstrip("0").rstrip(".")
+    if result in ("", "-", "0"):
+        result = "0"
+    elif sign < 0:
+        result = "-" + result
+    return result
+
+
+# non-vacuity: the oracle reproduces the section 2.4 worked example independently
+check(
+    "_exact_product_str('0.036091684','12149247') == '438486.783561948' "
+    "(oracle non-vacuity, section 2.4 worked example)",
+    _exact_product_str("0.036091684", "12149247") == "438486.783561948",
+    _exact_product_str("0.036091684", "12149247"),
+)
+
+# --- clean block (pen N=0.5; occ N=2; dolocc N=9; dolhh N=3.25, G=1000) -----
+_clean_rows = [
+    _synth_row("S1", "MD1", "M1", "pen", "", "0.5", "r1"),
+    _synth_row("S1", "MD1", "M1", "occ", "", "2", "r2"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "dolhh", "1000", "3.25", "r4"),
+]
+_clean_master = _synth_master(_clean_rows)
+_clean_result = build_calculations(_clean_master)
+
+check(
+    "clean block: frame columns == CALCULATED_HEADERS",
+    list(_clean_result.frame.columns) == list(config.CALCULATED_HEADERS),
+    str(list(_clean_result.frame.columns)),
+)
+check("clean block: frame length == master length", len(_clean_result.frame) == 4, len(_clean_result.frame))
+check("clean block: zero warnings", _clean_result.warnings == [], str(_clean_result.warnings))
+check(
+    "clean block: every cell is a Python str",
+    all(isinstance(v, str) for v in _clean_result.frame.to_numpy().ravel()),
+)
+check(
+    "clean block: Total Analyzed Population == '1000' on dolhh (row 3)",
+    _clean_result.frame[config.CALC_TOTAL_ANALYZED_POPULATION].iloc[3] == "1000",
+    _clean_result.frame[config.CALC_TOTAL_ANALYZED_POPULATION].iloc[3],
+)
+check(
+    "clean block: Count of Circana Buyers == '500' on pen (row 0)",
+    _clean_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0] == "500",
+    _clean_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0],
+)
+check(
+    "clean block: Partner Member Overlap == '0.5' on pen (row 0)",
+    _clean_result.frame[config.CALC_PARTNER_MEMBER_OVERLAP].iloc[0] == "0.5",
+    _clean_result.frame[config.CALC_PARTNER_MEMBER_OVERLAP].iloc[0],
+)
+check(
+    "clean block: Dollars spent ... by HH == '3.25' on dolhh (row 3)",
+    _clean_result.frame[config.CALC_DOLLARS_PER_HH].iloc[3] == "3.25",
+    _clean_result.frame[config.CALC_DOLLARS_PER_HH].iloc[3],
+)
+check(
+    "clean block: Total Dollars spent ... == '3250' on dolhh (row 3)",
+    _clean_result.frame[config.CALC_TOTAL_DOLLARS].iloc[3] == "3250",
+    _clean_result.frame[config.CALC_TOTAL_DOLLARS].iloc[3],
+)
+check(
+    "clean block: Total Buying Trips == '1000' on pen (row 0)",
+    _clean_result.frame[config.CALC_TOTAL_TRIPS].iloc[0] == "1000",
+    _clean_result.frame[config.CALC_TOTAL_TRIPS].iloc[0],
+)
+check(
+    "clean block: Trips per Buyer == '2' on occ (row 1)",
+    _clean_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1] == "2",
+    _clean_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1],
+)
+check(
+    "clean block: Offline column blank on every row",
+    (_clean_result.frame[config.CALC_OFFLINE_NEW_BUYERS] == "").all(),
+)
+check(
+    "clean block: dolocc row (row 2) fully blank across all 8 columns",
+    all(_clean_result.frame[h].iloc[2] == "" for h in config.CALCULATED_HEADERS),
+)
+check(
+    "blank G on the pen row (row 0) produces no warning: already proven by "
+    "the zero-warnings check above, since row 0's CNT_EXPSD_HH is blank and unused",
+    _clean_result.warnings == [],
+)
+
+# --- casing: 'Pen', ' OCC ', 'DolHH' give identical output ------------------
+_casing_rows = [
+    _synth_row("S1", "MD1", "M1", "Pen", "", "0.5", "r1"),
+    _synth_row("S1", "MD1", "M1", " OCC ", "", "2", "r2"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "DolHH", "1000", "3.25", "r4"),
+]
+_casing_result = build_calculations(_synth_master(_casing_rows))
+check(
+    "casing: 'Pen'/' OCC '/'DolHH' produce identical output to the clean block",
+    [_casing_result.frame[h].tolist() for h in config.CALCULATED_HEADERS]
+    == [_clean_result.frame[h].tolist() for h in config.CALCULATED_HEADERS],
+    str([_casing_result.frame[h].tolist() for h in config.CALCULATED_HEADERS]),
+)
+check("casing: zero warnings", _casing_result.warnings == [], str(_casing_result.warnings))
+
+# --- shuffle: two interleaved blocks in scrambled order ----------------------
+_block_a = [
+    _synth_row("S1", "MDA", "MA", "pen", "", "0.5", "a1"),
+    _synth_row("S1", "MDA", "MA", "occ", "", "2", "a2"),
+    _synth_row("S1", "MDA", "MA", "dolocc", "", "9", "a3"),
+    _synth_row("S1", "MDA", "MA", "dolhh", "1000", "3.25", "a4"),
+]
+_block_b = [
+    _synth_row("S2", "MDB", "MB", "pen", "", "0.25", "b1"),
+    _synth_row("S2", "MDB", "MB", "occ", "", "4", "b2"),
+    _synth_row("S2", "MDB", "MB", "dolocc", "", "1", "b3"),
+    _synth_row("S2", "MDB", "MB", "dolhh", "2000", "10", "b4"),
+]
+_ordered_rows = _block_a + _block_b
+_shuffled_rows = [
+    _block_a[3], _block_b[1], _block_a[0], _block_b[3],
+    _block_a[2], _block_b[0], _block_a[1], _block_b[2],
+]
+
+_ordered_master = _synth_master(_ordered_rows)
+_shuffled_master = _synth_master(_shuffled_rows)
+_ordered_result = build_calculations(_ordered_master)
+_shuffled_result = build_calculations(_shuffled_master)
+
+
+def _by_row_id(master: pd.DataFrame, result) -> dict:
+    mapping: dict[str, dict[str, str]] = {}
+    row_ids = master["RowId"].tolist()
+    for header in config.CALCULATED_HEADERS:
+        values = result.frame[header].tolist()
+        for i, rid in enumerate(row_ids):
+            mapping.setdefault(rid, {})[header] = values[i]
+    return mapping
+
+
+_mapped_ordered = _by_row_id(_ordered_master, _ordered_result)
+_mapped_shuffled = _by_row_id(_shuffled_master, _shuffled_result)
+check(
+    "shuffle: two interleaved blocks in scrambled order produce identical "
+    "values mapped back by RowId",
+    _mapped_ordered == _mapped_shuffled,
+    "" if _mapped_ordered == _mapped_shuffled else f"ordered={_mapped_ordered} shuffled={_mapped_shuffled}",
+)
+
+# --- broken blocks: missing occ ----------------------------------------------
+_missing_occ_rows = [
+    _synth_row("S1", "MD1", "M1", "pen", "", "0.5", "r1"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "dolhh", "1000", "3.25", "r4"),
+]
+_missing_occ_result = build_calculations(_synth_master(_missing_occ_rows))
+check(
+    "broken block (missing occ): Count of Circana Buyers blank",
+    _missing_occ_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0] == "",
+)
+check(
+    "broken block (missing occ): Total Buying Trips blank",
+    _missing_occ_result.frame[config.CALC_TOTAL_TRIPS].iloc[0] == "",
+)
+check(
+    "broken block (missing occ): single-row columns still computed "
+    "(Partner Member Overlap on pen, Total Analyzed Population on dolhh)",
+    _missing_occ_result.frame[config.CALC_PARTNER_MEMBER_OVERLAP].iloc[0] == "0.5"
+    and _missing_occ_result.frame[config.CALC_TOTAL_ANALYZED_POPULATION].iloc[2] == "1000",
+)
+check(
+    "broken block (missing occ): exactly one block_role_missing warning",
+    len(_missing_occ_result.warnings) == 1
+    and _missing_occ_result.warnings[0].code == config.P2W_BLOCK_ROLE_MISSING,
+    str(_missing_occ_result.warnings),
+)
+check(
+    "broken block (missing occ): warning names the missing role",
+    "'occ'" in _missing_occ_result.warnings[0].issue,
+    _missing_occ_result.warnings[0].issue,
+)
+
+# --- broken blocks: duplicated pen -------------------------------------------
+_dup_pen_rows = [
+    _synth_row("S1", "MD1", "M1", "pen", "", "0.5", "r1"),
+    _synth_row("S1", "MD1", "M1", "pen", "", "0.75", "r1b"),
+    _synth_row("S1", "MD1", "M1", "occ", "", "2", "r2"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "dolhh", "1000", "3.25", "r4"),
+]
+_dup_pen_result = build_calculations(_synth_master(_dup_pen_rows))
+check(
+    "broken block (duplicated pen): both pen rows get their own Partner Member Overlap",
+    _dup_pen_result.frame[config.CALC_PARTNER_MEMBER_OVERLAP].iloc[0] == "0.5"
+    and _dup_pen_result.frame[config.CALC_PARTNER_MEMBER_OVERLAP].iloc[1] == "0.75",
+)
+check(
+    "broken block (duplicated pen): cross-row columns blank",
+    _dup_pen_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0] == ""
+    and _dup_pen_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[1] == ""
+    and _dup_pen_result.frame[config.CALC_TOTAL_TRIPS].iloc[0] == ""
+    and _dup_pen_result.frame[config.CALC_TOTAL_TRIPS].iloc[1] == "",
+)
+check(
+    "broken block (duplicated pen): exactly one block_role_duplicated warning",
+    len(_dup_pen_result.warnings) == 1
+    and _dup_pen_result.warnings[0].code == config.P2W_BLOCK_ROLE_DUPLICATED,
+    str(_dup_pen_result.warnings),
+)
+
+# --- broken blocks: dolocc-only block ----------------------------------------
+_dolocc_only_rows = [
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r1"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "8", "r2"),
+]
+_dolocc_only_result = build_calculations(_synth_master(_dolocc_only_rows))
+check(
+    "dolocc-only block: one warning naming all three roles",
+    len(_dolocc_only_result.warnings) == 1
+    and _dolocc_only_result.warnings[0].code == config.P2W_BLOCK_ROLE_MISSING
+    and all(f"'{r}'" in _dolocc_only_result.warnings[0].issue for r in ("pen", "occ", "dolhh")),
+    str(_dolocc_only_result.warnings),
+)
+check(
+    "dolocc-only block: every calculated cell blank",
+    all(_dolocc_only_result.frame[h].iloc[i] == "" for h in config.CALCULATED_HEADERS for i in (0, 1)),
+)
+
+# --- missing source columns ---------------------------------------------------
+_drop_g_master = _clean_master.drop(columns=[config.CNT_EXPSD_HH_COL])
+_drop_g_result = build_calculations(_drop_g_master)
+check(
+    "drop CNT_EXPSD_HH: exactly one source_column_missing naming CNT_EXPSD_HH",
+    len(_drop_g_result.warnings) == 1
+    and _drop_g_result.warnings[0].code == config.P2W_SOURCE_COLUMN_MISSING
+    and _drop_g_result.warnings[0].column == config.CNT_EXPSD_HH_COL,
+    str(_drop_g_result.warnings),
+)
+check(
+    "drop CNT_EXPSD_HH: the 4 G-dependent columns are blank everywhere",
+    all(
+        (_drop_g_result.frame[h] == "").all()
+        for h in (
+            config.CALC_TOTAL_ANALYZED_POPULATION,
+            config.CALC_COUNT_CIRCANA_BUYERS,
+            config.CALC_TOTAL_DOLLARS,
+            config.CALC_TOTAL_TRIPS,
+        )
+    ),
+)
+check(
+    "drop CNT_EXPSD_HH: the other 3 columns still compute",
+    _drop_g_result.frame[config.CALC_PARTNER_MEMBER_OVERLAP].iloc[0] == "0.5"
+    and _drop_g_result.frame[config.CALC_DOLLARS_PER_HH].iloc[3] == "3.25"
+    and _drop_g_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1] == "2",
+)
+
+_drop_f_master = _clean_master.drop(columns=[config.DEPENDENT_VARIABLE_COL])
+_drop_f_result = build_calculations(_drop_f_master)
+check(
+    "drop dependent_variable: everything blank, one warning",
+    len(_drop_f_result.warnings) == 1
+    and _drop_f_result.warnings[0].code == config.P2W_SOURCE_COLUMN_MISSING
+    and _drop_f_result.warnings[0].column == config.DEPENDENT_VARIABLE_COL
+    and all((_drop_f_result.frame[h] == "").all() for h in config.CALCULATED_HEADERS),
+    str(_drop_f_result.warnings),
+)
+
+_drop_model_master = _clean_master.drop(columns=[config.MODEL_COL])
+_drop_model_result = build_calculations(_drop_model_master)
+check(
+    "drop Model: cross-row columns blank, single-row columns computed, one warning",
+    len(_drop_model_result.warnings) == 1
+    and _drop_model_result.warnings[0].code == config.P2W_SOURCE_COLUMN_MISSING
+    and _drop_model_result.warnings[0].column == config.MODEL_COL
+    and (_drop_model_result.frame[config.CALC_COUNT_CIRCANA_BUYERS] == "").all()
+    and (_drop_model_result.frame[config.CALC_TOTAL_TRIPS] == "").all()
+    and _drop_model_result.frame[config.CALC_PARTNER_MEMBER_OVERLAP].iloc[0] == "0.5"
+    and _drop_model_result.frame[config.CALC_TOTAL_ANALYZED_POPULATION].iloc[3] == "1000",
+    str(_drop_model_result.warnings),
+)
+
+_rename_g_master = _clean_master.rename(columns={config.CNT_EXPSD_HH_COL: config.CNT_EXPSD_HH_COL.lower()})
+_rename_g_result = build_calculations(_rename_g_master)
+check(
+    "rename CNT_EXPSD_HH to lowercase: still found (identical results to the clean block)",
+    _rename_g_result.warnings == []
+    and [_rename_g_result.frame[h].tolist() for h in config.CALCULATED_HEADERS]
+    == [_clean_result.frame[h].tolist() for h in config.CALCULATED_HEADERS],
+    str(_rename_g_result.warnings),
+)
+
+# --- problem cells -------------------------------------------------------------
+_blank_g_rows = [dict(r) for r in _clean_rows]
+_blank_g_rows[3] = dict(_blank_g_rows[3])
+_blank_g_rows[3][config.CNT_EXPSD_HH_COL] = ""
+_blank_g_result = build_calculations(_synth_master(_blank_g_rows))
+check(
+    "blank G on dolhh: 4 columns blank",
+    _blank_g_result.frame[config.CALC_TOTAL_ANALYZED_POPULATION].iloc[3] == ""
+    and _blank_g_result.frame[config.CALC_TOTAL_DOLLARS].iloc[3] == ""
+    and _blank_g_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0] == ""
+    and _blank_g_result.frame[config.CALC_TOTAL_TRIPS].iloc[0] == "",
+)
+check(
+    "blank G on dolhh: exactly one value_blank warning listing all 4 headers, {row} correct",
+    len(_blank_g_result.warnings) == 1
+    and _blank_g_result.warnings[0].code == config.P2W_VALUE_BLANK
+    and _blank_g_result.warnings[0].column == config.CNT_EXPSD_HH_COL
+    and all(
+        h in _blank_g_result.warnings[0].issue
+        for h in (
+            config.CALC_TOTAL_ANALYZED_POPULATION,
+            config.CALC_COUNT_CIRCANA_BUYERS,
+            config.CALC_TOTAL_DOLLARS,
+            config.CALC_TOTAL_TRIPS,
+        )
+    )
+    and "row 5" in _blank_g_result.warnings[0].issue,
+    str(_blank_g_result.warnings),
+)
+
+_bad_n_rows = [dict(r) for r in _clean_rows]
+_bad_n_rows[0] = dict(_bad_n_rows[0])
+_bad_n_rows[0][config.ADJ_MEAN_EXPSD_GRP_COL] = "abc"
+_bad_n_result = build_calculations(_synth_master(_bad_n_rows))
+check(
+    "'abc' in N on pen: one value_not_numeric warning",
+    len(_bad_n_result.warnings) == 1 and _bad_n_result.warnings[0].code == config.P2W_VALUE_NOT_NUMERIC,
+    str(_bad_n_result.warnings),
+)
+
+# --- exactness (literal strings) ----------------------------------------------
+_exactness_rows = [
+    _synth_row("S1", "MD1", "M1", "pen", "", "0.036091684", "r1"),
+    _synth_row("S1", "MD1", "M1", "occ", "", "1.9454682413648197", "r2"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "dolhh", "12149247", "3.25", "r4"),
+]
+_exactness_result = build_calculations(_synth_master(_exactness_rows))
+check(
+    "exactness: 0.036091684 x 12149247 == '438486.783561948' (Count of Circana Buyers)",
+    _exactness_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0] == "438486.783561948",
+    _exactness_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0],
+)
+check(
+    "exactness: Total Analyzed Population from '12149247' == '12149247'",
+    _exactness_result.frame[config.CALC_TOTAL_ANALYZED_POPULATION].iloc[3] == "12149247",
+    _exactness_result.frame[config.CALC_TOTAL_ANALYZED_POPULATION].iloc[3],
+)
+check(
+    "exactness: Partner Member Overlap from '0.036091684' unchanged",
+    _exactness_result.frame[config.CALC_PARTNER_MEMBER_OVERLAP].iloc[0] == "0.036091684",
+    _exactness_result.frame[config.CALC_PARTNER_MEMBER_OVERLAP].iloc[0],
+)
+check(
+    "exactness: Trips per Buyer full precision == '1.9454682413648197'",
+    _exactness_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1] == "1.9454682413648197",
+    _exactness_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1],
+)
+
+_second_exactness_rows = [
+    _synth_row("S1", "MD1", "M1", "pen", "", "0.03609168443151368", "r1"),
+    _synth_row("S1", "MD1", "M1", "occ", "", "1.9454682413648197", "r2"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "dolhh", "12149247.0", "3.25", "r4"),
+]
+_second_exactness_result = build_calculations(_synth_master(_second_exactness_rows))
+check(
+    "exactness: 0.03609168443151368 x 12149247.0 == '438486.78880451428219896'",
+    _second_exactness_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0]
+    == "438486.78880451428219896",
+    _second_exactness_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0],
+)
+
+_e_notation_rows = [
+    _synth_row("S1", "MD1", "M1", "pen", "", "5E-1", "r1"),
+    _synth_row("S1", "MD1", "M1", "occ", "", "2", "r2"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "dolhh", "1.0E+3", "3.25", "r4"),
+]
+_e_notation_result = build_calculations(_synth_master(_e_notation_rows))
+check(
+    "exactness: 5E-1 x 1.0E+3 == '500' (Count of Circana Buyers)",
+    _e_notation_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0] == "500",
+    _e_notation_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0],
+)
+
+# --- triple product: matches the independent oracle, differs from a 28-digit context
+_triple_a = "0.03609168443151368"
+_triple_b = "12149247.0"
+_triple_c = "1.9454682413648197"
+_triple_oracle = _exact_product_str(_triple_a, _triple_b, _triple_c)
+_triple_app = numeric.format_number(
+    numeric.multiply(decimal.Decimal(_triple_a), decimal.Decimal(_triple_b), decimal.Decimal(_triple_c))
+)
+check(
+    "triple product matches the independent integer-arithmetic oracle",
+    _triple_app == _triple_oracle,
+    f"app={_triple_app} oracle={_triple_oracle}",
+)
+_context28 = decimal.Context(prec=28, rounding=decimal.ROUND_HALF_EVEN)
+_triple_28 = _context28.multiply(
+    _context28.multiply(decimal.Decimal(_triple_a), decimal.Decimal(_triple_b)), decimal.Decimal(_triple_c)
+)
+_triple_28_str = numeric.format_number(_triple_28)
+check(
+    "triple product under a 28-digit context differs from the app's 100-digit result "
+    "(proves the default context is not used)",
+    _triple_28_str != _triple_app,
+    f"28-digit={_triple_28_str} app={_triple_app}",
+)
+
+# --- AM flag -------------------------------------------------------------------
+_am_rows = [
+    _synth_row("S1", "MD1", "M1", "pen", "", "0.5", "r1"),
+    _synth_row("S1", "MD1", "M1", "occ", "", "1.9454682413648197", "r2"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "dolhh", "1000", "3.25", "r4"),
+]
+_am_default_result = build_calculations(_synth_master(_am_rows))
+check(
+    "AM flag: default (am_round_2dp=None) gives full precision",
+    _am_default_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1] == "1.9454682413648197",
+    _am_default_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1],
+)
+_am_true_result = build_calculations(_synth_master(_am_rows), am_round_2dp=True)
+check(
+    "AM flag: am_round_2dp=True rounds '1.9454682413648197' -> '1.95'",
+    _am_true_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1] == "1.95",
+    _am_true_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1],
+)
+_am_two_rows = [
+    _synth_row("S1", "MD1", "M1", "pen", "", "0.5", "r1"),
+    _synth_row("S1", "MD1", "M1", "occ", "", "2", "r2"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "dolhh", "1000", "3.25", "r4"),
+]
+_am_two_result = build_calculations(_synth_master(_am_two_rows), am_round_2dp=True)
+check(
+    "AM flag: am_round_2dp=True on '2' -> '2.00'",
+    _am_two_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1] == "2.00",
+    _am_two_result.frame[config.CALC_TRIPS_PER_BUYER].iloc[1],
+)
+
+# --- hygiene -------------------------------------------------------------------
+check(
+    "hygiene: decimal.getcontext().prec == 28 after every calculations call "
+    "(the thread-local global context is never touched)",
+    decimal.getcontext().prec == 28,
+    decimal.getcontext().prec,
+)
+_pre_call_copy = _clean_master.copy(deep=True)
+build_calculations(_clean_master)
+check(
+    "hygiene: master_df equals a pre-call deep copy (never mutated)",
+    _clean_master.equals(_pre_call_copy),
+)
+
+# --- Inexact path (P2-20 / P2W_VALUE_TOO_PRECISE) coverage gap flagged by QC --
+# A clean 4-row block where N(dolhh) and G(dolhh) are both 55-digit repunits:
+# their exact product needs 110 significant digits, none of them trailing
+# zeros, so ARITH_CONTEXT's Inexact trap actually fires (unlike the earlier
+# "1 followed by 60 zeros" case, where dropped digits are all zero and are
+# therefore NOT Inexact under decimal's rules). Only Total Dollars spent (the
+# one column that multiplies N(dolhh) x G(dolhh)) is affected; the pen/occ
+# operands stay small so Count of Circana Buyers and Total Buying Trips
+# compute normally, giving exactly one warning in total.
+_precise_big = "1" * 55
+_too_precise_rows = [
+    _synth_row("S1", "MD1", "M1", "pen", "", "0.5", "r1"),
+    _synth_row("S1", "MD1", "M1", "occ", "", "2", "r2"),
+    _synth_row("S1", "MD1", "M1", "dolocc", "", "9", "r3"),
+    _synth_row("S1", "MD1", "M1", "dolhh", _precise_big, _precise_big, "r4"),
+]
+_too_precise_result = build_calculations(_synth_master(_too_precise_rows))
+check(
+    "Inexact path: Total Dollars spent is blank when the exact product needs "
+    "more than 100 significant digits",
+    _too_precise_result.frame[config.CALC_TOTAL_DOLLARS].iloc[3] == "",
+    _too_precise_result.frame[config.CALC_TOTAL_DOLLARS].iloc[3],
+)
+check(
+    "Inexact path: exactly one value_too_precise warning, naming the output column",
+    len(_too_precise_result.warnings) == 1
+    and _too_precise_result.warnings[0].code == config.P2W_VALUE_TOO_PRECISE
+    and _too_precise_result.warnings[0].column == config.CALC_TOTAL_DOLLARS,
+    str(_too_precise_result.warnings),
+)
+check(
+    "Inexact path: the other two multiplied columns (small operands) still compute",
+    _too_precise_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0] != ""
+    and _too_precise_result.frame[config.CALC_TOTAL_TRIPS].iloc[0] != "",
+    str(
+        (
+            _too_precise_result.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0],
+            _too_precise_result.frame[config.CALC_TOTAL_TRIPS].iloc[0],
+        )
+    ),
+)
+
+# --- real-sample anchor (Samples/) --------------------------------------------
+_real_calc = build_calculations(master_df)
+check(
+    "real-sample anchor: zero calculation warnings on the real sample master",
+    _real_calc.warnings == [],
+    str(_real_calc.warnings),
+)
+check(
+    "real-sample anchor: Count of Circana Buyers row 0 == '438486.783561948'",
+    _real_calc.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0] == "438486.783561948",
+    _real_calc.frame[config.CALC_COUNT_CIRCANA_BUYERS].iloc[0],
+)
+
+# ---------------------------------------------------------------------------
+# SECTION 13b — Stage 3: calculations, layer 2 (reference-workbook comparison)
+# (PHASE2_ARCHITECTURE.md section 10.5)
+# ---------------------------------------------------------------------------
+section("13b. Stage 3 — Calculations, Layer 2 (Reference Workbook)")
+
+_WORKBOOK_PATH = ROOT / "Phase 2 process" / "master_file_w_calculations.xlsx"
+_WORKBOOK_SHEET = "MaserFile_from STEP4 (2)"
+
+if not _WORKBOOK_PATH.exists():
+    skip(
+        "Layer 2 (reference workbook comparison)",
+        f"SKIPPED — reference workbook not found: {_WORKBOOK_PATH}",
+    )
+else:
+    _layer2_ready = True
+    try:
+        _wb_bytes = _WORKBOOK_PATH.read_bytes()
+        _wb_frame_raw = pd.read_excel(
+            _io_s12.BytesIO(_wb_bytes), sheet_name=_WORKBOOK_SHEET, dtype=str
+        ).fillna("")
+        _wb_openpyxl = _openpyxl_s12.load_workbook(_io_s12.BytesIO(_wb_bytes), data_only=True)
+        _wb_sheet_cells = _wb_openpyxl[_WORKBOOK_SHEET]
+    except Exception as e:
+        skip(
+            "Layer 2 (reference workbook comparison)",
+            f"SKIPPED — reference workbook not found or unreadable: {_WORKBOOK_PATH} ({e})",
+        )
+        _layer2_ready = False
+
+    if _layer2_ready:
+        import random as _random_s13b
+
+        check("layer 2: workbook has 212 data rows", len(_wb_frame_raw) == 212, len(_wb_frame_raw))
+
+        _wb_headers_first32 = [str(h).strip() for h in _wb_frame_raw.columns[:32]]
+        _expected_first32 = REFERENCE_STUDY_COLUMNS + [config.STUDY_NAME_COL]
+        check(
+            "layer 2: first 32 stripped headers == REFERENCE_STUDY_COLUMNS + [Study_Name]",
+            _wb_headers_first32 == _expected_first32,
+            "" if _wb_headers_first32 == _expected_first32 else str(_wb_headers_first32),
+        )
+
+        from schema import normalize_header as _normalize_header_s13b
+
+        _calc_signature_keys = {_normalize_header_s13b(h) for h in config.CALCULATED_HEADERS[:7]} | {
+            _normalize_header_s13b(config.LEGACY_CALCULATED_HEADERS[0])
+        }
+        _wb_headers_32_39 = [str(h).strip() for h in _wb_frame_raw.columns[32:39]]
+        check(
+            "layer 2: headers at positions 32-38 match the first 7 CALCULATED_HEADERS "
+            "under normalize_header (legacy Instacart name accepted)",
+            all(_normalize_header_s13b(h) in _calc_signature_keys for h in _wb_headers_32_39),
+            str(_wb_headers_32_39),
+        )
+
+        _wb_study_col = _wb_frame_raw.columns[31]
+        _wb_study_order: list[str] = []
+        _wb_study_counts: dict[str, int] = {}
+        for _v in _wb_frame_raw[_wb_study_col]:
+            if _v not in _wb_study_counts:
+                _wb_study_counts[_v] = 0
+                _wb_study_order.append(_v)
+            _wb_study_counts[_v] += 1
+        check(
+            "layer 2: per-study row counts in first-appearance order == [52, 80, 80]",
+            [_wb_study_counts[s] for s in _wb_study_order] == [52, 80, 80],
+            str([(s, _wb_study_counts[s]) for s in _wb_study_order]),
+        )
+
+        # --- build the master realistically, from the workbook's own A-AF values
+        from csv_writer import to_csv_bytes
+
+        _wb_master_bytes = to_csv_bytes(_wb_frame_raw.iloc[:, :32])
+        _wb_master_item = UploadedItem(
+            index=0, name="Master_Reference_2026-09-28_0000.csv", data=_wb_master_bytes
+        )
+        _wb_master_ctx = build_master_context_from_existing(_wb_master_item)
+        _wb_batch_result = process_batch([_wb_master_item], _wb_master_ctx, {})
+        _wb_calc = build_calculations(_wb_batch_result.master_df)
+        check(
+            "layer 2: zero calculation warnings on the reference master",
+            _wb_calc.warnings == [],
+            str(_wb_calc.warnings),
+        )
+
+        # --- columns AG-AL (6): every non-blank Excel cell agrees to within ONE
+        # fixed relative tolerance; Excel blank <-> app blank ------------------------
+        # Ruling 2026-09-28 (Marcos, option B): the previous C7 mechanism re-derived
+        # the "correct" pen/dolhh/occ operand cells independently of whatever the
+        # app actually output for a given cell, then asked only "does some rounding
+        # of those operands explain Excel's cached value?" — never "does the app's
+        # own value agree?". QC proved this was a real hole, not just a generous
+        # tolerance: three deliberately-wrong variants (a product using the wrong
+        # operand row, a product missing a multiplication factor, and an arbitrary
+        # constant unrelated to any operand) were ALL "accepted" by the old
+        # mechanism on every one of their 53 non-blank cells. It is replaced here
+        # with a single fixed relative tolerance checked directly against the app's
+        # own output, with no special-casing and no operand reconstruction.
+        _LAYER2_RELATIVE_TOLERANCE = decimal.Decimal("1e-13")  # see QC report: the
+        # measured worst-case relative error across all 318 compared cells is
+        # ~1.116e-14 (Excel's text-to-number coercion of inputs it stores as
+        # >15-significant-digit text). 1e-13 keeps roughly a full order of
+        # magnitude of margin above that measured worst case.
+
+        _agal_headers = config.CALCULATED_HEADERS[:6]
+        _n_master_col = _wb_master_ctx.column_index[normalize_column(config.ADJ_MEAN_EXPSD_GRP_COL)]
+        _n_col_idx0 = list(_wb_batch_result.master_df.columns).index(_n_master_col)
+
+        # Informational only (no acceptance logic depends on this): how many
+        # ADJ_MEAN_EXPSD_GRP cells the workbook stores as text, which is why some
+        # cells sit near the tolerance boundary (Excel's text-to-number coercion).
+        _text_stored_count = sum(
+            1
+            for _r in range(212)
+            if _wb_sheet_cells.cell(row=_r + 2, column=_n_col_idx0 + 1).data_type == "s"
+        )
+        print(f"[INFO] {config.ADJ_MEAN_EXPSD_GRP_COL} text-stored cells (data_type == 's'): {_text_stored_count}")
+
+        _real_failures: list[tuple] = []
+        _nonblank_total = 0
+        _worst_relative_error = decimal.Decimal(0)
+        for _h_idx, _header in enumerate(_agal_headers):
+            _excel_values = _wb_frame_raw.iloc[:, 32 + _h_idx].tolist()
+            _app_values = _wb_calc.frame[_header].tolist()
+            _nonblank_this_col = 0
+            for _row_i in range(212):
+                _excel_raw = _excel_values[_row_i].strip()
+                _app_raw = _app_values[_row_i].strip()
+                if _excel_raw == "":
+                    if _app_raw != "":
+                        _real_failures.append((_header, _row_i, "excel blank, app non-blank", _app_raw))
+                    continue
+                _nonblank_this_col += 1
+                _nonblank_total += 1
+                try:
+                    _excel_dec = decimal.Decimal(_excel_raw)
+                except decimal.InvalidOperation:
+                    _real_failures.append((_header, _row_i, "excel value unparseable", _excel_raw))
+                    continue
+                if _app_raw == "":
+                    _real_failures.append((_header, _row_i, "excel non-blank, app blank", _excel_raw))
+                    continue
+                _app_dec = decimal.Decimal(_app_raw)
+                _diff = abs(_app_dec - _excel_dec)
+                if _excel_dec == 0:
+                    _rel_error = _diff  # absolute fallback; not expected in this data
+                    _tolerance = _LAYER2_RELATIVE_TOLERANCE
+                else:
+                    _rel_error = _diff / abs(_excel_dec)
+                    _tolerance = _LAYER2_RELATIVE_TOLERANCE * abs(_excel_dec)
+                if _rel_error > _worst_relative_error:
+                    _worst_relative_error = _rel_error
+                if _diff > _tolerance:
+                    _real_failures.append(
+                        (_header, _row_i, "value mismatch beyond tolerance", (_app_raw, _excel_raw))
+                    )
+            check(
+                f"layer 2: {_header!r} has 53 non-blank Excel values",
+                _nonblank_this_col == 53,
+                _nonblank_this_col,
+            )
+
+        check(
+            f"layer 2: AG-AL — every cell agrees within a single fixed relative "
+            f"tolerance of {_LAYER2_RELATIVE_TOLERANCE} (no special-casing)",
+            _real_failures == [],
+            str(_real_failures[:10]),
+        )
+        print(f"[INFO] worst observed relative error across AG-AL: {_worst_relative_error}")
+
+        # --- AM: app value rounds to Excel's text; am_round_2dp=True matches exactly
+        _am_header = config.CALCULATED_HEADERS[6]
+        _am_excel_values = _wb_frame_raw.iloc[:, 32 + 6].tolist()
+        _am_app_values = _wb_calc.frame[_am_header].tolist()
+        _am_mismatches = []
+        for _row_i in range(212):
+            _excel_raw = _am_excel_values[_row_i].strip()
+            _app_raw = _am_app_values[_row_i].strip()
+            if _excel_raw == "":
+                if _app_raw != "":
+                    _am_mismatches.append((_row_i, "excel blank, app non-blank"))
+                continue
+            if _app_raw == "":
+                _am_mismatches.append((_row_i, "excel non-blank, app blank"))
+                continue
+            _rounded = numeric.format_rounded(decimal.Decimal(_app_raw), config.AM_ROUND_QUANTUM)
+            if _rounded != _excel_raw:
+                _am_mismatches.append((_row_i, (_rounded, _excel_raw)))
+        check(
+            "layer 2 AM: app's full value rounds (ROUND_HALF_UP to 0.01) to Excel's text",
+            _am_mismatches == [],
+            str(_am_mismatches[:10]),
+        )
+
+        _wb_calc_rounded = build_calculations(_wb_batch_result.master_df, am_round_2dp=True)
+        _am_app_rounded_values = _wb_calc_rounded.frame[_am_header].tolist()
+        _am_rounded_mismatches = [
+            _row_i
+            for _row_i in range(212)
+            if _am_excel_values[_row_i].strip() != ""
+            and _am_app_rounded_values[_row_i].strip() != _am_excel_values[_row_i].strip()
+        ]
+        check(
+            "layer 2 AM: am_round_2dp=True output equals Excel's text exactly",
+            _am_rounded_mismatches == [],
+            str(_am_rounded_mismatches[:10]),
+        )
+
+        check(
+            "layer 2: Offline column blank on all 212 rows",
+            (_wb_calc.frame[config.CALC_OFFLINE_NEW_BUYERS] == "").all(),
+        )
+
+        # --- shuffled rerun: string-identical results and warnings ------------------
+        _perm = list(range(212))
+        _random_s13b.Random(20260928).shuffle(_perm)
+        _shuffled_master_df = _wb_batch_result.master_df.iloc[_perm].reset_index(drop=True)
+        _shuffled_calc = build_calculations(_shuffled_master_df)
+
+        _unpermuted = {header: [""] * 212 for header in config.CALCULATED_HEADERS}
+        for _new_pos, _orig_pos in enumerate(_perm):
+            for header in config.CALCULATED_HEADERS:
+                _unpermuted[header][_orig_pos] = _shuffled_calc.frame[header].iloc[_new_pos]
+        _shuffle_identical = all(
+            _unpermuted[header] == _wb_calc.frame[header].tolist() for header in config.CALCULATED_HEADERS
+        )
+        check(
+            "layer 2: shuffled rerun is string-identical to the unshuffled output "
+            "once un-permuted",
+            _shuffle_identical,
+        )
+        check(
+            "layer 2: shuffled rerun produces the same number of warnings",
+            len(_shuffled_calc.warnings) == len(_wb_calc.warnings),
+            f"shuffled={len(_shuffled_calc.warnings)} original={len(_wb_calc.warnings)}",
+        )
+
+        # --- structural cross-check vs Samples/ -------------------------------------
+        _cross_check_files = [
+            "Holly_Rancher 27382_Scored.csv",
+            "Instacart_Cascade_scored.csv",
+            "Instacart_Bel Brands_scored.csv",
+        ]
+        _cross_check_frames = [
+            read_table(name, (SAMPLES_DIR / name).read_bytes()) for name in _cross_check_files
+        ]
+        _cross_check_concat = pd.concat(_cross_check_frames, ignore_index=True)
+        _cross_check_keys = list(
+            zip(
+                _cross_check_concat[config.MODEL_DESC_COL],
+                _cross_check_concat[config.MODEL_COL],
+                _cross_check_concat[config.DEPENDENT_VARIABLE_COL],
+            )
+        )
+        _wb_keys = list(
+            zip(
+                _wb_frame_raw[config.MODEL_DESC_COL],
+                _wb_frame_raw[config.MODEL_COL],
+                _wb_frame_raw[config.DEPENDENT_VARIABLE_COL],
+            )
+        )
+        check(
+            "layer 2: (MODEL_DESC, Model, dependent_variable) sequence matches the "
+            "workbook's 212-row sequence, built from Samples/ in the declared order",
+            _cross_check_keys == _wb_keys,
+            "" if _cross_check_keys == _wb_keys else "sequences differ",
+        )
+
+        _rounding_diff_count = 0
+        for _idx in range(min(len(_cross_check_concat), len(_wb_frame_raw))):
+            for _col in (config.CNT_EXPSD_HH_COL, config.ADJ_MEAN_EXPSD_GRP_COL):
+                _source_val = _cross_check_concat.iloc[_idx][_col].strip()
+                _wb_val = _wb_frame_raw.iloc[_idx][_col].strip()
+                if _source_val != "" and _wb_val != "":
+                    try:
+                        if decimal.Decimal(_source_val) != decimal.Decimal(_wb_val):
+                            _rounding_diff_count += 1
+                    except decimal.InvalidOperation:
+                        _rounding_diff_count += 1
+        print(
+            f"[INFO] N/G cells whose Decimal value differs between the workbook and "
+            f"Samples/ (documents the Excel rounding motivating the C1 input decision): "
+            f"{_rounding_diff_count}"
+        )
+
+        print(
+            f"LAYER 2 RAN — 212 rows, 7 columns, {_nonblank_total} non-blank cells compared, "
+            f"worst relative error {_worst_relative_error}, tolerance {_LAYER2_RELATIVE_TOLERANCE}"
+        )
+
+# ---------------------------------------------------------------------------
+# SECTION 14 — Stage 4: upload validation, merge, warnings
+# (PHASE2_ARCHITECTURE.md section 10.6)
+# ---------------------------------------------------------------------------
+section("14. Stage 4 — Upload Validation, Merge, Warnings")
+
+from file_reader import read_raw_grid
+from metadata_upload import parse_upload
+from final_builder import build_final
+from report import phase2_warnings_to_frame, summarize_phase2_warnings
+from csv_writer import (
+    build_final_filename,
+    build_phase2_warnings_filename,
+    to_csv_bytes as _to_csv_bytes_s14,
+)
+from models import CalculationResult, Phase2Warning
+
+_S14_MASTER_COLUMNS = MASTER_COLUMNS
+
+
+def _s14_csv_bytes(rows: list[list[str]]) -> bytes:
+    buf = _io_s12.StringIO()
+    writer = csv.writer(buf, lineterminator="\n")
+    for row in rows:
+        writer.writerow(row)
+    return buf.getvalue().encode("utf-8")
+
+
+def _s14_blank_calc(n: int) -> CalculationResult:
+    frame = pd.DataFrame(
+        {h: [""] * n for h in config.CALCULATED_HEADERS},
+        columns=list(config.CALCULATED_HEADERS),
+        dtype=object,
+    )
+    return CalculationResult(frame=frame, warnings=[])
+
+
+def _s14_codes(warnings: list[Phase2Warning]) -> list[str]:
+    return [w.code for w in warnings]
+
+
+# --- read_raw_grid --------------------------------------------------------
+_grid_unmangled_bytes = _s14_csv_bytes(
+    [["Study_Name", "Brand", "Brand", ""], ["S1", "x", "y", "z"]]
+)
+_grid_unmangled = read_raw_grid("g.csv", _grid_unmangled_bytes)
+check(
+    "read_raw_grid: CSV 'Study_Name,Brand,Brand,' keeps Brand, Brand, '' unmangled "
+    "(no pandas 'Unnamed:'/'.1' renaming, since header=None)",
+    _grid_unmangled[0] == ["Study_Name", "Brand", "Brand", ""],
+    str(_grid_unmangled[0]),
+)
+
+_grid_wb = _openpyxl_s12.Workbook()
+_grid_ws = _grid_wb.active
+for _c, _h in enumerate(["Study_Name", "B", "C", "D", "E", "F", "G", "", ], start=1):
+    _grid_ws.cell(row=1, column=_c, value=_h if _h != "" else None)
+_grid_ws.cell(row=2, column=8, value="h2value")
+_grid_buf = _io_s12.BytesIO()
+_grid_wb.save(_grid_buf)
+_grid_h1_blank = read_raw_grid("g.xlsx", _grid_buf.getvalue())
+check(
+    "read_raw_grid: xlsx with an empty H1 but a value in H2 gives '' at header index 7",
+    _grid_h1_blank[0][7] == "" and _grid_h1_blank[1][7] == "h2value",
+    str((_grid_h1_blank[0][7], _grid_h1_blank[1][7])),
+)
+
+try:
+    read_raw_grid("empty.csv", b"")
+    check("read_raw_grid: zero-byte input raises FileReadError", False, "no exception was raised")
+except FileReadError as e:
+    check(
+        "read_raw_grid: zero-byte input raises FileReadError(REASON_EMPTY_FILE)",
+        e.reason == config.REASON_EMPTY_FILE,
+        e.reason,
+    )
+
+# --- refusals (accepted is False, exact message) --------------------------
+_no_study_name_upload = parse_upload(
+    BOUNTY_FILE.name, BOUNTY_FILE.read_bytes(), _S14_MASTER_COLUMNS
+)
+check(
+    "refusal: a raw study file (no Study_Name column) gives MSG_WRONG_FILE",
+    not _no_study_name_upload.accepted and _no_study_name_upload.refusal_message == config.MSG_WRONG_FILE,
+    _no_study_name_upload.refusal_message,
+)
+
+_real_master_upload = parse_upload(
+    MASTER_FILE_NAME, (SAMPLES_DIR / MASTER_FILE_NAME).read_bytes(), _S14_MASTER_COLUMNS
+)
+check(
+    "refusal: the real master CSV gives MSG_UPLOAD_IS_MASTER",
+    not _real_master_upload.accepted and _real_master_upload.refusal_message == config.MSG_UPLOAD_IS_MASTER,
+    _real_master_upload.refusal_message,
+)
+
+_synthetic_after_formulas_df = master_df.copy()
+for _h in config.CALCULATED_HEADERS:
+    _synthetic_after_formulas_df[_h] = ""
+_synthetic_after_formulas_bytes = _to_csv_bytes_s14(_synthetic_after_formulas_df)
+_synthetic_after_formulas_upload = parse_upload(
+    "after_formulas_master_Instacart_2026-09-28_1200.csv",
+    _synthetic_after_formulas_bytes,
+    _S14_MASTER_COLUMNS,
+)
+check(
+    "refusal: a synthetic after_formulas_master gives MSG_UPLOAD_IS_MASTER",
+    not _synthetic_after_formulas_upload.accepted
+    and _synthetic_after_formulas_upload.refusal_message == config.MSG_UPLOAD_IS_MASTER,
+    _synthetic_after_formulas_upload.refusal_message,
+)
+
+_garbage_upload = parse_upload("garbage.xlsx", b"\x00\x01\x02not a zip file", _S14_MASTER_COLUMNS)
+check(
+    "refusal: unreadable garbage bytes give the MSG_UPLOAD_UNREADABLE prefix",
+    not _garbage_upload.accepted
+    and _garbage_upload.refusal_message.startswith(config.MSG_UPLOAD_UNREADABLE.split("{detail}")[0]),
+    _garbage_upload.refusal_message,
+)
+
+_zero_byte_upload = parse_upload("empty.csv", b"", _S14_MASTER_COLUMNS)
+check(
+    "refusal: zero-byte upload gives the MSG_UPLOAD_UNREADABLE prefix",
+    not _zero_byte_upload.accepted
+    and _zero_byte_upload.refusal_message.startswith(config.MSG_UPLOAD_UNREADABLE.split("{detail}")[0]),
+    _zero_byte_upload.refusal_message,
+)
+
+_header_only_no_study_upload = parse_upload(
+    "headeronly.csv", _s14_csv_bytes([["A", "B", "C"]]), _S14_MASTER_COLUMNS
+)
+check(
+    "refusal: header-only CSV without Study_Name gives MSG_WRONG_FILE",
+    not _header_only_no_study_upload.accepted
+    and _header_only_no_study_upload.refusal_message == config.MSG_WRONG_FILE,
+    _header_only_no_study_upload.refusal_message,
+)
+
+# --- P12: trimmed, case-insensitive matching -------------------------------
+_p12_master_df = pd.DataFrame({config.STUDY_NAME_COL: ["Instacart_Cascade"]}, dtype=object).astype(str)
+_p12_calc = _s14_blank_calc(1)
+_p12_upload_bytes = _s14_csv_bytes(
+    [
+        list(config.TEMPLATE_HEADERS),
+        [" instacart_cascade ", "3.49", "45", "0.25", "150000", "12500000", "Featured"],
+    ]
+)
+_p12_upload = parse_upload("p12.csv", _p12_upload_bytes, list(_p12_master_df.columns))
+_p12_final = build_final(_p12_master_df, _p12_calc, _p12_upload)
+check(
+    "P12: ' instacart_cascade ' matches 'Instacart_Cascade' (trimmed, case-insensitive)",
+    _p12_final.frame[config.TEMPLATE_AVG_BRAND_PRICE].iloc[0] == "3.49"
+    and config.P2W_STUDY_NOT_IN_UPLOAD not in _s14_codes(_p12_final.warnings)
+    and config.P2W_STUDY_NOT_IN_MASTER not in _s14_codes(_p12_final.warnings),
+    str(_p12_final.frame[config.TEMPLATE_AVG_BRAND_PRICE].iloc[0]),
+)
+
+# --- P13 matrix -------------------------------------------------------------
+_p13_master_df = pd.DataFrame(
+    {config.STUDY_NAME_COL: ["NotInUpload", "Duplicated", "OneFilledOneBlank", "AllBlankRow"]},
+    dtype=object,
+).astype(str)
+_p13_calc = _s14_blank_calc(4)
+_p13_upload_bytes = _s14_csv_bytes(
+    [
+        list(config.TEMPLATE_HEADERS),
+        ["Duplicated", "1", "1", "0.1", "1", "1", "A"],
+        ["Duplicated", "2", "2", "0.2", "2", "2", "B"],
+        ["OneFilledOneBlank", "5", "5", "0.5", "5", "5", "C"],
+        ["OneFilledOneBlank", "", "", "", "", "", ""],
+        ["AllBlankRow", "", "", "", "", "", ""],
+        ["UploadOnly", "9", "9", "0.9", "9", "9", "D"],
+    ]
+)
+_p13_upload = parse_upload("p13.csv", _p13_upload_bytes, list(_p13_master_df.columns))
+_p13_final = build_final(_p13_master_df, _p13_calc, _p13_upload)
+
+
+def _p13_warnings_for(study: str) -> list[Phase2Warning]:
+    return [w for w in _p13_final.warnings if w.study == study]
+
+
+check(
+    "P13: study not in upload -> blank + study_not_in_upload",
+    _p13_final.frame[config.TEMPLATE_AVG_BRAND_PRICE].iloc[0] == ""
+    and any(w.code == config.P2W_STUDY_NOT_IN_UPLOAD for w in _p13_warnings_for("NotInUpload")),
+    str(_p13_warnings_for("NotInUpload")),
+)
+check(
+    "P13: upload-only study (not in master) -> study_not_in_master",
+    any(w.code == config.P2W_STUDY_NOT_IN_MASTER for w in _p13_warnings_for("UploadOnly")),
+    str(_p13_warnings_for("UploadOnly")),
+)
+_p13_dup_warning = next(
+    (w for w in _p13_warnings_for("Duplicated") if w.code == config.P2W_STUDY_DUPLICATED), None
+)
+check(
+    "P13: two filled rows -> blank + study_duplicated with row numbers",
+    _p13_final.frame[config.TEMPLATE_AVG_BRAND_PRICE].iloc[1] == ""
+    and _p13_dup_warning is not None
+    and "2" in _p13_dup_warning.issue
+    and "3" in _p13_dup_warning.issue,
+    str(_p13_dup_warning),
+)
+check(
+    "P13: one filled row + one blank row -> merged, no warning",
+    _p13_final.frame[config.TEMPLATE_AVG_BRAND_PRICE].iloc[2] == "5"
+    and _p13_warnings_for("OneFilledOneBlank") == [],
+    str((_p13_final.frame[config.TEMPLATE_AVG_BRAND_PRICE].iloc[2], _p13_warnings_for("OneFilledOneBlank"))),
+)
+check(
+    "P13: named all-blank row -> blank, no warning",
+    _p13_final.frame[config.TEMPLATE_AVG_BRAND_PRICE].iloc[3] == ""
+    and _p13_warnings_for("AllBlankRow") == [],
+    str(_p13_warnings_for("AllBlankRow")),
+)
+
+# --- P14: user-added columns -------------------------------------------------
+_p14_master_df = pd.DataFrame({config.STUDY_NAME_COL: ["S1"]}, dtype=object).astype(str)
+_p14_headers = list(config.TEMPLATE_HEADERS) + [
+    "",              # H: blank header, values below -> upload_blank_header
+    "Extra1",        # I: accepted extra
+    "Extra2",        # J: accepted extra
+    "ThisHeaderIsWayTooLong",  # K: 22 chars -> upload_extra_too_long, still merged
+    "Brand",         # L: duplicate with M -> upload_extra_duplicated
+    "brand",         # M
+    "Channels",      # N: reserved (a master column) -> upload_extra_reserved
+    config.CALC_COUNT_CIRCANA_BUYERS,  # O: reserved (a calculated header)
+]
+_p14_row = ["S1", "3.49", "45", "0.25", "150000", "12500000", "Featured"] + [
+    "blankheaderval", "e1", "e2", "toolong", "b1", "b2", "chan", "cnt"
+]
+_p14_upload_bytes = _s14_csv_bytes([_p14_headers, _p14_row])
+_p14_upload = parse_upload("p14.csv", _p14_upload_bytes, list(_p14_master_df.columns) + ["Channels"])
+_p14_codes = _s14_codes(_p14_upload.warnings)
+check(
+    "P14: blank header with values -> upload_blank_header",
+    config.P2W_UPLOAD_BLANK_HEADER in _p14_codes,
+    str(_p14_upload.warnings),
+)
+check(
+    "P14: accepted extras (Extra1, Extra2) merged after the fixed six, in upload order",
+    _p14_upload.merge_columns[:6] == list(config.TEMPLATE_VALUE_HEADERS)
+    and "Extra1" in _p14_upload.merge_columns
+    and "Extra2" in _p14_upload.merge_columns
+    and _p14_upload.merge_columns.index("Extra1") < _p14_upload.merge_columns.index("Extra2"),
+    str(_p14_upload.merge_columns),
+)
+check(
+    "P14: 22-character header -> upload_extra_too_long, still merged",
+    config.P2W_UPLOAD_EXTRA_TOO_LONG in _p14_codes
+    and "ThisHeaderIsWayTooLong" in _p14_upload.merge_columns,
+    str(_p14_upload.merge_columns),
+)
+check(
+    "P14: duplicate extras (Brand/brand) -> both ignored, upload_extra_duplicated",
+    config.P2W_UPLOAD_EXTRA_DUPLICATED in _p14_codes
+    and "Brand" not in _p14_upload.merge_columns
+    and "brand" not in _p14_upload.merge_columns,
+    str(_p14_upload.merge_columns),
+)
+check(
+    "P14: 'Channels' (a master column) -> upload_extra_reserved",
+    any(
+        w.code == config.P2W_UPLOAD_EXTRA_RESERVED and w.column == "Channels"
+        for w in _p14_upload.warnings
+    ),
+    str(_p14_upload.warnings),
+)
+check(
+    "P14: 'Count of Circana Buyers' (a calculated header) -> upload_extra_reserved",
+    any(
+        w.code == config.P2W_UPLOAD_EXTRA_RESERVED and w.column == config.CALC_COUNT_CIRCANA_BUYERS
+        for w in _p14_upload.warnings
+    ),
+    str(_p14_upload.warnings),
+)
+
+_p14_unexpected_bytes = _s14_csv_bytes(
+    [
+        [config.STUDY_NAME_COL, "Avg_Brand_Price", "UnknownHeader", "Pct_HH_Buying",
+         "Tot_Camp_Cost", "Tot_Camp_Impr", "Read_Type"],
+        ["S1", "3.49", "x", "0.25", "150000", "12500000", "Featured"],
+    ]
+)
+_p14_unexpected_upload = parse_upload("p14b.csv", _p14_unexpected_bytes, list(_p14_master_df.columns))
+check(
+    "P14: unknown header in column C -> upload_unexpected_column",
+    any(
+        w.code == config.P2W_UPLOAD_UNEXPECTED_COLUMN and w.column == "UnknownHeader"
+        for w in _p14_unexpected_upload.warnings
+    ),
+    str(_p14_unexpected_upload.warnings),
+)
+
+# --- P15: fixed column missing/renamed/duplicated/moved --------------------
+_p15_headers = [
+    config.STUDY_NAME_COL, "Avg Price", "Avg_Purch_Cycle", "Pct_HH_Buying",
+    "Tot_Camp_Cost", "Tot_Camp_Impr", "Tot_Camp_Cost", "Extra", config.TEMPLATE_READ_TYPE,
+]
+_p15_row = ["S1", "3.49", "45", "0.25", "1", "12500000", "2", "e", "Featured"]
+_p15_upload = parse_upload(
+    "p15.csv", _s14_csv_bytes([_p15_headers, _p15_row]), list(_p14_master_df.columns)
+)
+check(
+    "P15: 'Avg Price' in B -> upload_fixed_missing (Avg_Brand_Price) + upload_unexpected_column",
+    any(
+        w.code == config.P2W_UPLOAD_FIXED_MISSING and w.column == config.TEMPLATE_AVG_BRAND_PRICE
+        for w in _p15_upload.warnings
+    )
+    and any(
+        w.code == config.P2W_UPLOAD_UNEXPECTED_COLUMN and w.column == "Avg Price"
+        for w in _p15_upload.warnings
+    ),
+    str(_p15_upload.warnings),
+)
+check(
+    "P15: Read_Type moved to column I is matched by name",
+    config.TEMPLATE_READ_TYPE in _p15_upload.present_fixed,
+    str(_p15_upload.present_fixed),
+)
+check(
+    "P15: two Tot_Camp_Cost columns -> upload_fixed_duplicated, blank",
+    any(
+        w.code == config.P2W_UPLOAD_FIXED_DUPLICATED and w.column == config.TEMPLATE_TOT_CAMP_COST
+        for w in _p15_upload.warnings
+    )
+    and config.TEMPLATE_TOT_CAMP_COST not in _p15_upload.present_fixed,
+    str(_p15_upload.warnings),
+)
+
+# --- Two Study_Name columns --------------------------------------------------
+_two_study_headers = [config.STUDY_NAME_COL, "Avg_Brand_Price", config.STUDY_NAME_COL]
+_two_study_upload = parse_upload(
+    "twostudy.csv",
+    _s14_csv_bytes([_two_study_headers, ["S1", "3.49", "S1dup"]]),
+    list(_p14_master_df.columns),
+)
+check(
+    "two Study_Name columns: leftmost used + upload_second_study_name warning",
+    _two_study_upload.accepted
+    and list(_two_study_upload.rows_by_study.keys()) == ["s1"]
+    and any(w.code == config.P2W_UPLOAD_SECOND_STUDY_NAME for w in _two_study_upload.warnings),
+    str((_two_study_upload.rows_by_study, _two_study_upload.warnings)),
+)
+
+# --- P16/P17: value check ----------------------------------------------------
+_p1617_accept = ["3.49", "-2", "1500000", "1.2E+06", "0.25", ".5", "5.", "1e-07", " 3.49 "]
+_p1617_warn = ["1,500", "$3.49", "25%", "abc", "+5", "1.2.3", "3,49", "NaN", "inf", "1 000"]
+
+for _i, _val in enumerate(_p1617_accept + _p1617_warn):
+    _study = f"P1617_{_i}"
+    _m_df = pd.DataFrame({config.STUDY_NAME_COL: [_study]}, dtype=object).astype(str)
+    _c = _s14_blank_calc(1)
+    _u = parse_upload(
+        "v.csv",
+        _s14_csv_bytes([list(config.TEMPLATE_HEADERS), [_study, _val, "1", "0.1", "1", "1", "x"]]),
+        list(_m_df.columns),
+    )
+    _f = build_final(_m_df, _c, _u)
+    _expect_warning = _val in _p1617_warn
+    _has_warning = any(w.code == config.P2W_VALUE_NOT_PLAIN_NUMBER for w in _f.warnings)
+    check(
+        f"P16/P17: {_val!r} on Avg_Brand_Price -> "
+        f"{'warns' if _expect_warning else 'accepts'}, merged as typed either way",
+        _has_warning == _expect_warning
+        and _f.frame[config.TEMPLATE_AVG_BRAND_PRICE].iloc[0] == _val,
+        str((_has_warning, _f.frame[config.TEMPLATE_AVG_BRAND_PRICE].iloc[0])),
+    )
+
+_p1617_readtype_extra_df = pd.DataFrame({config.STUDY_NAME_COL: ["S1"]}, dtype=object).astype(str)
+_p1617_readtype_extra_upload = parse_upload(
+    "rt.csv",
+    _s14_csv_bytes(
+        [
+            list(config.TEMPLATE_HEADERS) + ["Extra"],
+            ["S1", "1", "1", "0.1", "1", "1", "abc", "abc"],
+        ]
+    ),
+    list(_p1617_readtype_extra_df.columns),
+)
+_p1617_readtype_extra_final = build_final(
+    _p1617_readtype_extra_df, _s14_blank_calc(1), _p1617_readtype_extra_upload
+)
+check(
+    "P16/P17: Read_Type='abc' and an extra='abc' never checked -> no value_not_plain_number",
+    config.P2W_VALUE_NOT_PLAIN_NUMBER not in _s14_codes(_p1617_readtype_extra_final.warnings),
+    str(_p1617_readtype_extra_final.warnings),
+)
+
+_p1617_off_df = pd.DataFrame({config.STUDY_NAME_COL: ["S1"]}, dtype=object).astype(str)
+_p1617_off_upload = parse_upload(
+    "off.csv",
+    _s14_csv_bytes([list(config.TEMPLATE_HEADERS), ["S1", "abc", "1", "0.1", "1", "1", "x"]]),
+    list(_p1617_off_df.columns),
+)
+_p1617_off_final = build_final(
+    _p1617_off_df, _s14_blank_calc(1), _p1617_off_upload, value_check=False
+)
+check(
+    "P16/P17: value_check=False -> no value_not_plain_number warnings at all",
+    config.P2W_VALUE_NOT_PLAIN_NUMBER not in _s14_codes(_p1617_off_final.warnings),
+    str(_p1617_off_final.warnings),
+)
+
+# --- P18: percentages --------------------------------------------------------
+from template_builder import build_template_bytes as _build_template_bytes_s14
+
+_p18_template_bytes = _build_template_bytes_s14(["S1"])
+_p18_wb = _openpyxl_s12.load_workbook(_io_s12.BytesIO(_p18_template_bytes))
+_p18_ws = _p18_wb[config.TEMPLATE_SHEET_TITLE]
+_p18_ws["B2"] = "3.49"
+_p18_ws["C2"] = "45"
+_p18_ws["D2"] = 0.25
+_p18_ws["E2"] = "150000"
+_p18_ws["F2"] = "12500000"
+_p18_ws["G2"] = "Featured"
+_p18_buf = _io_s12.BytesIO()
+_p18_wb.save(_p18_buf)
+_p18_df = pd.DataFrame({config.STUDY_NAME_COL: ["S1"]}, dtype=object).astype(str)
+_p18_upload = parse_upload("p18.xlsx", _p18_buf.getvalue(), list(_p18_df.columns))
+_p18_final = build_final(_p18_df, _s14_blank_calc(1), _p18_upload)
+check(
+    "P18: xlsx D2=0.25 (numeric, percent format) merges '0.25'",
+    _p18_final.frame[config.TEMPLATE_PCT_HH_BUYING].iloc[0] == "0.25",
+    _p18_final.frame[config.TEMPLATE_PCT_HH_BUYING].iloc[0],
+)
+
+_p18_csv_upload = parse_upload(
+    "p18.csv",
+    _s14_csv_bytes([list(config.TEMPLATE_HEADERS), ["S1", "3.49", "45", "25%", "150000", "12500000", "Featured"]]),
+    list(_p18_df.columns),
+)
+_p18_csv_final = build_final(_p18_df, _s14_blank_calc(1), _p18_csv_upload)
+check(
+    "P18: CSV '25%' is warned and merged as typed ('25%')",
+    _p18_csv_final.frame[config.TEMPLATE_PCT_HH_BUYING].iloc[0] == "25%"
+    and any(
+        w.code == config.P2W_VALUE_NOT_PLAIN_NUMBER and w.column == config.TEMPLATE_PCT_HH_BUYING
+        for w in _p18_csv_final.warnings
+    ),
+    str((_p18_csv_final.frame[config.TEMPLATE_PCT_HH_BUYING].iloc[0], _p18_csv_final.warnings)),
+)
+
+# --- Zero match ---------------------------------------------------------------
+_zero_match_master_df = pd.DataFrame({config.STUDY_NAME_COL: ["RealStudyA", "RealStudyB"]}, dtype=object).astype(str)
+_zero_match_upload = parse_upload(
+    "zm.csv",
+    _s14_csv_bytes(
+        [
+            list(config.TEMPLATE_HEADERS),
+            ["OtherProjectStudy1", "1", "1", "0.1", "1", "1", "x"],
+            ["OtherProjectStudy2", "2", "2", "0.2", "2", "2", "y"],
+        ]
+    ),
+    list(_zero_match_master_df.columns),
+)
+_zero_match_final = build_final(_zero_match_master_df, _s14_blank_calc(2), _zero_match_upload)
+check(
+    "zero match: zero_match True, upload_study_count correct",
+    _zero_match_final.zero_match is True and _zero_match_final.upload_study_count == 2,
+    f"zero_match={_zero_match_final.zero_match} upload_study_count={_zero_match_final.upload_study_count}",
+)
+_zero_match_upload_warning_codes = [
+    w.code for w in _zero_match_final.warnings if w.code != config.P2W_STUDY_NOT_IN_UPLOAD
+]
+check(
+    "zero match: upload_zero_match is first among the upload warnings",
+    _zero_match_upload_warning_codes[0] == config.P2W_UPLOAD_ZERO_MATCH
+    if _zero_match_upload_warning_codes
+    else False,
+    str(_zero_match_upload_warning_codes),
+)
+
+# --- P26/P27 on the full-batch master (Section 6, 732 rows) ------------------
+_full_batch_calc = build_calculations(full_batch_result.master_df)
+_full_batch_studies = list_template_studies(full_batch_result.master_df)
+_full_batch_template_bytes = build_template_bytes(_full_batch_studies)
+_full_batch_upload = parse_upload(
+    "full.xlsx", _full_batch_template_bytes, list(full_batch_result.master_df.columns)
+)
+_full_batch_final = build_final(full_batch_result.master_df, _full_batch_calc, _full_batch_upload)
+
+check(
+    "P26: final columns == master + CALCULATED_HEADERS + fixed six + extras",
+    list(_full_batch_final.frame.columns)
+    == list(full_batch_result.master_df.columns)
+    + list(config.CALCULATED_HEADERS)
+    + _full_batch_upload.merge_columns,
+    str(list(_full_batch_final.frame.columns)),
+)
+check(
+    "P26: Study_Name appears exactly once in the final columns",
+    list(_full_batch_final.frame.columns).count(config.STUDY_NAME_COL) == 1,
+)
+check(
+    "P26: length and order identical to the master",
+    len(_full_batch_final.frame) == len(full_batch_result.master_df)
+    and _full_batch_final.frame[config.STUDY_NAME_COL].tolist()
+    == full_batch_result.master_df[config.STUDY_NAME_COL].tolist(),
+)
+check(
+    "P26: every master cell is string-identical in the final frame",
+    all(
+        _full_batch_final.frame[col].tolist() == full_batch_result.master_df[col].tolist()
+        for col in full_batch_result.master_df.columns
+    ),
+)
+_p27_ok = True
+_p27_detail = ""
+for _study in _full_batch_studies:
+    _mask = _full_batch_final.frame[config.STUDY_NAME_COL] == _study
+    for _col in config.TEMPLATE_VALUE_HEADERS:
+        _values = _full_batch_final.frame.loc[_mask, _col].unique().tolist()
+        if len(_values) > 1:
+            _p27_ok = False
+            _p27_detail = f"{_study}/{_col}: {_values}"
+            break
+    if not _p27_ok:
+        break
+check("P27: each study's values are identical (repeated) on every one of its rows", _p27_ok, _p27_detail)
+
+# --- P29 proxy: always derived from the current master + current upload -----
+_p29_base_bytes = _to_csv_bytes_s14(_full_batch_final.frame.iloc[:, : len(full_batch_result.master_df.columns)])
+_p29_new_row = full_batch_result.master_df.iloc[[0]].copy()
+_p29_new_row[config.STUDY_NAME_COL] = "BrandNewStudy"
+_p29_new_master_df = pd.concat(
+    [full_batch_result.master_df, _p29_new_row], ignore_index=True
+).reindex(columns=full_batch_result.master_df.columns)
+_p29_new_calc = build_calculations(_p29_new_master_df)
+_p29_new_final = build_final(_p29_new_master_df, _p29_new_calc, _full_batch_upload)
+check(
+    "P29 proxy: a new study not in the retained upload gets study_not_in_upload",
+    any(
+        w.code == config.P2W_STUDY_NOT_IN_UPLOAD and w.study == "BrandNewStudy"
+        for w in _p29_new_final.warnings
+    ),
+    str([w for w in _p29_new_final.warnings if w.study == "BrandNewStudy"]),
+)
+check(
+    "P29 proxy: the new master's extra row is reflected in the final frame",
+    len(_p29_new_final.frame) == len(full_batch_result.master_df) + 1,
+    len(_p29_new_final.frame),
+)
+_p29_repeat_a = build_final(full_batch_result.master_df, _full_batch_calc, _full_batch_upload)
+_p29_repeat_b = build_final(full_batch_result.master_df, _full_batch_calc, _full_batch_upload)
+check(
+    "P29 proxy: two calls with identical inputs give byte-identical to_csv_bytes",
+    _to_csv_bytes_s14(_p29_repeat_a.frame) == _to_csv_bytes_s14(_p29_repeat_b.frame),
+)
+
+# --- report.py additions ------------------------------------------------------
+_report_empty_frame = phase2_warnings_to_frame([])
+check(
+    "phase2_warnings_to_frame([]) keeps PHASE2_WARNING_COLUMNS, zero rows",
+    list(_report_empty_frame.columns) == config.PHASE2_WARNING_COLUMNS and len(_report_empty_frame) == 0,
+    str(list(_report_empty_frame.columns)),
+)
+_report_frame = phase2_warnings_to_frame(_p13_final.warnings)
+check(
+    "phase2_warnings_to_frame columns == PHASE2_WARNING_COLUMNS, one row per warning "
+    "(non-vacuous: _p13_final carries real warnings)",
+    list(_report_frame.columns) == config.PHASE2_WARNING_COLUMNS
+    and len(_report_frame) == len(_p13_final.warnings)
+    and len(_p13_final.warnings) > 0,
+    f"columns={list(_report_frame.columns)} n_warnings={len(_p13_final.warnings)}",
+)
+check(
+    "summarize_phase2_warnings: '' when there are no warnings",
+    summarize_phase2_warnings(_p12_final) == "" if _p12_final.warnings == [] else True,
+    summarize_phase2_warnings(_p12_final),
+)
+_summary_expected = config.MSG_WARNINGS_SUMMARY.format(
+    total=len(_p13_final.warnings),
+    calc=_p13_final.calculation_warning_count,
+    upload=_p13_final.upload_warning_count,
+)
+check(
+    "summarize_phase2_warnings: exact string on a warnings-bearing result",
+    summarize_phase2_warnings(_p13_final) == _summary_expected
+    and len(_p13_final.warnings) > 0,
+    summarize_phase2_warnings(_p13_final),
+)
+
+_fixed_now_s14 = _datetime_s12(2026, 9, 28, 14, 30)
+check(
+    "build_final_filename('Instacart', fixed_now) exact pattern",
+    build_final_filename("Instacart", _fixed_now_s14)
+    == "after_formulas_master_Instacart_2026-09-28_1430.csv",
+    build_final_filename("Instacart", _fixed_now_s14),
+)
+check(
+    "build_phase2_warnings_filename('Instacart', fixed_now) exact pattern",
+    build_phase2_warnings_filename("Instacart", _fixed_now_s14)
+    == "phase2_warnings_Instacart_2026-09-28_1430.csv",
+    build_phase2_warnings_filename("Instacart", _fixed_now_s14),
+)
+
+# --- end-to-end precision -----------------------------------------------------
+_e2e_calc = build_calculations(precision_result.master_df)
+_e2e_studies = list_template_studies(precision_result.master_df)
+_e2e_template_bytes = build_template_bytes(_e2e_studies)
+_e2e_upload = parse_upload("e2e.xlsx", _e2e_template_bytes, list(precision_result.master_df.columns))
+_e2e_final = build_final(precision_result.master_df, _e2e_calc, _e2e_upload)
+_e2e_bytes = _to_csv_bytes_s14(_e2e_final.frame)
+check(
+    "end-to-end precision: to_csv_bytes(final.frame) starts with the UTF-8 BOM",
+    _e2e_bytes[:3] == b"\xef\xbb\xbf",
+    repr(_e2e_bytes[:3]),
+)
+_e2e_text = _e2e_bytes.decode(config.OUTPUT_ENCODING)
+_e2e_rows = list(csv.DictReader(_io_s12.StringIO(_e2e_text)))
+_e2e_master_csv_rows = list(
+    csv.DictReader(_io_s12.StringIO(_to_csv_bytes_s14(precision_result.master_df).decode(config.OUTPUT_ENCODING)))
+)
+_e2e_mismatches = []
+for _i, (_src, _out) in enumerate(zip(_e2e_master_csv_rows, _e2e_rows)):
+    for _col in precision_result.master_df.columns:
+        if _src[_col] != _out[_col]:
+            _e2e_mismatches.append((_i, _col, _src[_col], _out[_col]))
+check(
+    "end-to-end precision: every master column is identical to the master's own CSV fields, "
+    "re-parsed with the stdlib csv module",
+    _e2e_mismatches == [],
+    f"{len(_e2e_mismatches)} mismatches, first: {_e2e_mismatches[0]}" if _e2e_mismatches else "",
+)
+check(
+    "end-to-end precision: the literal '0.19163628728414203' survives (Bounty, via process_batch)",
+    any("0.19163628728414203" in row.values() for row in _e2e_rows),
+)
+
+# ---------------------------------------------------------------------------
 # Summary
 # ---------------------------------------------------------------------------
 total = _passed + _failed
 print(f"\n{'='*60}")
-print(f"  RESULT: {_passed}/{total} checks passed  |  {_failed} failed")
+print(f"  RESULT: {_passed}/{total} checks passed  |  {_failed} failed  |  {_skipped} skipped")
 print(f"{'='*60}\n")
 
 if _failed > 0:

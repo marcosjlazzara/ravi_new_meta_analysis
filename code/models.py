@@ -40,11 +40,12 @@ class MasterCandidate:
     readable: bool
     has_study_name: bool
     error: str                       # "" when readable
+    is_phase2_output: bool = False   # NEW (P3). Defaulted: every existing construction still works.
 
     @property
     def is_valid(self) -> bool:
-        """readable and has_study_name."""
-        return self.readable and self.has_study_name
+        """readable and has_study_name and not is_phase2_output."""
+        return self.readable and self.has_study_name and not self.is_phase2_output
 
 
 @dataclass(frozen=True, eq=False)
@@ -85,3 +86,57 @@ class BatchResult:
     rejected: int
     rows_appended: int               # sum of FileOutcome.rows
     total_records: int               # len(master_df)
+
+
+# =============================================================================
+# PHASE 2 — study metadata & calculations. Not yet consumed outside their own
+# stage's module (Stages 2-4 build the producers/consumers) — added now, per
+# PHASE2_ARCHITECTURE.md section 1.2, so later stages need no models.py churn.
+# =============================================================================
+
+
+@dataclass(frozen=True)
+class Phase2Warning:
+    """One row of the P30 warnings table / phase2_warnings CSV."""
+
+    study: str      # verbatim study name ("" for file- or master-level issues)
+    model: str      # block label per config.BLOCK_LABEL_PATTERN ("" when not block-specific)
+    column: str     # verbatim column name concerned ("" when it has no header)
+    issue: str      # human text from a config.ISSUE_* template
+    code: str       # config.P2W_* token — for tests; never written to any output
+
+
+@dataclass(frozen=True, eq=False)
+class CalculationResult:
+    frame: pd.DataFrame            # columns == list(config.CALCULATED_HEADERS), in order; len == len(master_df);
+                                    # RangeIndex; dtype=object; every cell a str ("" = blank)
+    warnings: list[Phase2Warning]  # emission order per section 3.6
+
+
+@dataclass(frozen=True)
+class UploadRow:
+    study_name: str                # verbatim cell from the upload's Study_Name column
+    values: dict[str, str]         # every ParsedUpload.merge_columns key present; verbatim cell text,
+                                    # "" where the fixed column was missing/ignored
+    row_number: int                # 1-based spreadsheet row (header row = 1)
+
+
+@dataclass(frozen=True, eq=False)
+class ParsedUpload:
+    accepted: bool                             # False => P11 refusal, no final file
+    refusal_message: str                       # "" when accepted
+    merge_columns: list[str]                   # all six config.TEMPLATE_VALUE_HEADERS, then accepted extras
+                                                # (verbatim stripped upload header, upload order)
+    present_fixed: frozenset[str]              # fixed headers found exactly once (config verbatim)
+    rows_by_study: dict[str, list[UploadRow]]  # key = study.strip().casefold(); insertion = first appearance
+    warnings: list[Phase2Warning]              # file-level and row-level upload warnings, section 7.5 order
+
+
+@dataclass(frozen=True, eq=False)
+class FinalResult:
+    frame: pd.DataFrame            # master cols (unchanged) + CALCULATED_HEADERS + merge_columns; all str
+    warnings: list[Phase2Warning]  # calculation warnings, then upload warnings (section 7.5 order)
+    calculation_warning_count: int
+    upload_warning_count: int
+    zero_match: bool               # P11 strong warning
+    upload_study_count: int        # distinct normalized non-blank study names in the upload

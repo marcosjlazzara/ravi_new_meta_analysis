@@ -27,6 +27,7 @@ from schema import (
     align_to_master,
     build_column_index,
     compare_columns,
+    find_phase2_output_headers,
     normalize_column,
     tag_study_name,
 )
@@ -46,6 +47,8 @@ def process_file(
       1. blank study_name               -> rejected, REASON_BLANK_STUDY_NAME
       2. read_table                     -> rejected, e.reason (EMPTY_FILE/UNREADABLE)
       3. build_column_index(file cols)  -> rejected, REASON_DUPLICATE_COLUMNS
+      3b. find_phase2_output_headers(df.columns) non-empty
+                                        -> rejected, REASON_PHASE2_OUTPUT (P3)
       4. compare_columns(optional={study_name normalized})
                                         -> rejected, REASON_COLUMN_MISMATCH + col lists
       5. len(df) == 0                   -> skipped,  REASON_NO_DATA_ROWS
@@ -56,9 +59,11 @@ def process_file(
     Only step 4 populates missing_cols/extra_cols; every other path leaves
     them []. (Step 3, duplicate columns, deliberately leaves both empty — a
     duplicate-column error has no meaningful missing-vs-extra comparison
-    against the master.) `study_name` on the returned FileOutcome is always
-    the raw value passed in (whatever was "used or attempted"), even when
-    blank.
+    against the master. Step 3b, Phase 2 output, leaves both empty for the
+    same reason — a calculated/merged-column file has no useful missing-vs-
+    extra comparison either.) `study_name` on the returned FileOutcome is
+    always the raw value passed in (whatever was "used or attempted"), even
+    when blank.
     """
 
     def _outcome(
@@ -94,6 +99,11 @@ def process_file(
         file_column_index = build_column_index(list(df.columns))
     except SchemaError:
         return None, _outcome(config.STATUS_REJECTED, config.REASON_DUPLICATE_COLUMNS)
+
+    # 3b. output fed back as input (P3) — a file carrying calculated/merged
+    # columns is rejected with a clear message; the run continues.
+    if find_phase2_output_headers(list(df.columns)):
+        return None, _outcome(config.STATUS_REJECTED, config.REASON_PHASE2_OUTPUT)
 
     # 4. column mismatch against the master, exempting Study_Name
     missing, extra = compare_columns(
@@ -132,6 +142,19 @@ def process_file(
     return aligned, _outcome(
         config.STATUS_APPENDED, config.REASON_NONE, rows=len(aligned)
     )
+
+
+def is_run_ready(master: MasterContext | None, study_item_count: int) -> bool:
+    """P4. False if master is None; True if study_item_count > 0; otherwise
+    True only for an EXISTING master (not master.created_this_run). The
+    first-master slot is unchanged: a freshly designated master still needs
+    at least one study file to run.
+    """
+    if master is None:
+        return False
+    if study_item_count > 0:
+        return True
+    return not master.created_this_run
 
 
 def process_batch(
