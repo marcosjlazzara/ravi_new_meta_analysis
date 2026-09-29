@@ -20,7 +20,8 @@ Context: questions on `Meta Analysis_NewV1.docx` (the 4-phase Meta Analysis auto
 >
 > **The three that matter most are Q5, Q15 and Q16.** All three concern the tool as built.
 >
-> **UPDATE 2026-09-29:** Marcos answered Q3, Q5, Q6, Q11, Q15, Q16 and Q20–Q24 — see the
+> **UPDATE 2026-09-29:** every question is now answered or closed (Q2 closed, Q8 and Q19 closed as not
+> needed). Earlier the same day, Marcos answered Q3, Q5, Q6, Q11, Q15, Q16 and Q20–Q24 — see the
 > "ANSWERED 2026-09-29" notes under each. The four deviations and the 27 design
 > defaults were also signed off. Still for Ravi: the 8th-digit heads-up and the later-phase questions.
 
@@ -35,6 +36,8 @@ Context: questions on `Meta Analysis_NewV1.docx` (the 4-phase Meta Analysis auto
 2. For whichever phase(s) are "now" — is there a target rollout date or milestone (e.g. a specific upcoming Meta Analysis project) this needs to be ready for?
 
    > ⬜ **STILL OPEN** — never asked. Now more pressing, not less: the code is done, so this is a deployment-scheduling question. Hosting is on Circana-controlled infrastructure (decision 2), which needs IT provisioning — the long pole, and outside our control.
+   >
+   > ✅ **ANSWERED 2026-09-29 (Marcos).** **Closed — no target rollout date.** Removed from the pending list.
 
 3. Is there a specific second client or engagement already lined up that needs the generalized version, or is "usable for any client" the goal without a concrete second use case yet? I ask because the original tool was deliberately built narrow for one client's file format — I want to build the right amount of flexibility, not more than needed.
 
@@ -73,12 +76,16 @@ Context: questions on `Meta Analysis_NewV1.docx` (the 4-phase Meta Analysis auto
 7. What platform/system actually holds the study search data and score files today? Will I have API or export access to query and bulk-download from it, or is this only accessible through a manual UI right now?
 
    > ⬜ **OPEN — LATER PHASE.** Phase 2 out of scope. This is its blocking dependency — worth asking early, since a "manual UI only" answer would make Phase 2 largely infeasible as written.
+   >
+   > ✅ **ANSWERED 2026-09-29 (Marcos).** Manual UI only, for now. The automated search & bulk-download phase is not feasible until there is API or export access.
 
 ## On Phase 3 (metric enrichment & benchmarking)
 
 8. Where do Total Campaign Cost, Total Campaign Impressions, % Household Buying, Average Purchase Cycle, and Average Brand Price currently come from — which reports or systems? Are those queryable somewhere, or are analysts compiling them manually today? I want to know before estimating, since if there's no systematic source for these yet, that's a data-availability problem, not something Python can solve on its own.
 
    > ⬜ **OPEN — LATER PHASE.** Phase 3 out of scope. The framing holds: if there's no systematic source, no amount of code fixes it.
+   >
+   > ✅ **ANSWERED 2026-09-29 (Marcos).** **Closed — not needed.** In Phase 2 these five values are typed into the `studyname_master` template by hand, so their upstream source does not affect the tool.
 
 ## Gaps and inconsistencies in the doc itself
 
@@ -93,6 +100,8 @@ Context: questions on `Meta Analysis_NewV1.docx` (the 4-phase Meta Analysis auto
 10. The original 5-step manual process ends with "Finalize the story and create final PPT" (4-5 days). None of the 4 phases cover that — Phase 4 stops at "export-ready charts, tables, and summaries." Is final PPT/story assembly intentionally staying manual forever, or is there a Phase 5 that just hasn't been written up yet?
 
     > ⬜ **OPEN — LATER PHASE.** Genuine gap in the source document; unaffected by the Phase 1 build.
+    >
+    > ✅ **ANSWERED 2026-09-29 (Marcos).** Deferred. The PPT/story step stays manual for now; revisit later.
 
 11. File formats and volume: will source files always be .xlsx/.csv across every client, or should I plan for other formats? And roughly how many study files, and how large, make up a typical Meta Analysis (10 files? 100? what size each)? This determines whether a straightforward pandas-based approach holds up or something else is needed.
 
@@ -109,10 +118,14 @@ Context: questions on `Meta Analysis_NewV1.docx` (the 4-phase Meta Analysis auto
 12. "Automatic generation of recommended bucket ranges based on data distribution" — is there a bucketing method analysts already use today (quantiles, fixed-width ranges, something else), or am I defining that methodology from scratch?
 
     > ⬜ **OPEN — LATER PHASE.** See Q9 — this is where the `MODEL_DESC` reconciliation problem properly belongs.
+    >
+    > ✅ **ANSWERED 2026-09-29 (Marcos).** Nothing to define yet — no bucketing method for now.
 
 13. "Statistical significance indicators where applicable" — what test and threshold should this use (e.g. t-test on lift, confidence interval), or is there an existing standard the analytics team already follows that I should match?
 
     > ⬜ **OPEN — LATER PHASE.** Note the scored files already carry `TWOTAIL_PVAL`, `ONETAIL_PVAL`, and 80/90% interval bounds — so significance may already be upstream rather than something to compute.
+    >
+    > ✅ **ANSWERED 2026-09-29 (Marcos).** No significance indicators for now.
 
 ## On Phase 1 mechanics (additional)
 
@@ -145,12 +158,16 @@ Context: questions on `Meta Analysis_NewV1.docx` (the 4-phase Meta Analysis auto
 17. The derived metrics (ROAS, %Lift, Absolute Difference, Average Weekly Impressions, etc.) aren't defined with formulas. Since these can be computed more than one way (e.g. is %Lift `(Exposed-Control)/Control` or something else; is ROAS revenue/cost or a different ratio), can you give me the exact formula for each so the numbers match what analysts already report?
 
     > ⬜ **OPEN — LATER PHASE.** Phase 3 out of scope. Worth getting in writing regardless — ambiguous formulas are how automated numbers end up quietly disagreeing with the ones analysts already publish.
+    >
+    > ✅ **ANSWERED 2026-09-29 (Marcos).** No additional derived columns for now. The 8 calculated columns from Ravi's workbook (built in Phase 2) are the defined set.
 
 ## On Phase 2 (field list)
 
 18. The search filters and output fields both end in "additional project/key attributes as available" — can you give me the definitive field list you need for a usable MVP, rather than "as available," so I'm not guessing at what the platform actually exposes?
 
     > ⬜ **OPEN — LATER PHASE.** Phase 2 out of scope.
+    >
+    > ✅ **ANSWERED 2026-09-29 (Marcos).** No field list yet (goes with Q7 — manual UI only for now).
 
 ## On phase dependencies
 
@@ -159,6 +176,8 @@ Context: questions on `Meta Analysis_NewV1.docx` (the 4-phase Meta Analysis auto
     > ✅ **THE INSTINCT WAS FOLLOWED.** Phase 1 was deliberately kept minimal: no alias map, no `MODEL_DESC` standardization, no schema-extension path, no in-tool remap, no persistence. Roughly 1,240 lines of application code.
     >
     > ⬜ **Still worth confirming** whether the Phase 2 future-state is a real intention — it determines whether the Q5/Q15/Q16 gaps are worth closing in Phase 1 at all, or whether Phase 2 would supersede them anyway.
+    >
+    > ✅ **ANSWERED 2026-09-29 (Marcos).** **Closed.** Not planned for now: search & bulk download is manual-UI only (Q7), so the current consolidation step stays as the way in.
 
 ---
 

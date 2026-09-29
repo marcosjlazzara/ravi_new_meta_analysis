@@ -14,8 +14,8 @@ Do not wait for him to ask.
 > and all 27 design defaults are answered or confirmed. What's open: (1) the **hosting decision**:
 > Marcos wants to stay on Streamlit, but must choose Streamlit Community Cloud (public, outside
 > Circana) or Streamlit on Circana infrastructure (decision 2), which needs IT and involves client
-> data. (2) After that, the `devops` pass. (3) Ravi only needs the 8th-digit heads-up and the
-> later-phase questions.
+> data. (2) After that, the `devops` pass. (3) Ravi gets the Phase 2 summary email (drafted,
+> includes the 8th-digit note). No questions remain open.
 
 ### Phase 1 — consolidation: BUILT
 - **Requirements:** confirmed — `META_BRIEF.md` (19 locked decisions, settled in a full requirements interview)
@@ -77,7 +77,7 @@ Do not wait for him to ask.
 | `Phase 2 process/master_file_w_calculations.xlsx` | Ravi's reference workbook — formulas + cached results for the Phase 2 calculations. Client data, gitignored. |
 | `Phase 3 Summary.docx` | Meeting notes (Ravi + Marcos) that scoped Phase 2 |
 | `ARCHITECTURE.md` | Authority on **how** for Phase 1: module map, contracts, 17 edge cases, precision contract |
-| `QUESTIONS_FOR_RAVI.md` | 24 questions for the requester. All that affect built code, plus Q20–Q24, were answered by Marcos on 2026-09-29. Still for Ravi: the 4 deviations, the 8th-digit heads-up and the later-phase questions |
+| `QUESTIONS_FOR_RAVI.md` | 24 questions for the requester. All 24 were answered or closed by Marcos on 2026-09-29, and the 4 deviations were signed off |
 | `HANDOFF.md` | Inherited lessons from the predecessor project (read once; not maintained — this project's lessons live in this file) |
 | `Meta Analysis_NewV1.docx` | The original source requirement |
 
@@ -234,7 +234,10 @@ Recorded under each question in `QUESTIONS_FOR_RAVI.md`.
 - ~~Sign-off on four deviations from the doc~~ — **signed off by Marcos 2026-09-29** (`META_BRIEF.md` section 7).
 - **Heads-up:** app figures will differ from his manual workbook from about the 8th digit
   (`PHASE2_BRIEF.md` section 11 item 6).
-- **Later-phase questions** (Q2 target date, Q7–Q10, Q12, Q13, Q17–Q19) are not urgent.
+- ~~Later-phase questions~~: **all answered or closed by Marcos, 2026-09-29.** Q2 closed (no target date);
+  Q7 manual UI only; Q8, Q19 closed as not needed; Q10, Q12, Q13, Q18 deferred; Q17 no more columns.
+- A Phase 2 summary email to Ravi was drafted 2026-09-29, covering what it does and doesn't do plus the 8th-digit
+  note. Access details are to follow once hosting is decided.
 
 ### 4. Design defaults — ALL 27 CONFIRMED 2026-09-29 (Marcos)
 
