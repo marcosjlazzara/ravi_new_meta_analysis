@@ -10,9 +10,12 @@ Do not wait for him to ask.
 ## Project Status (as of September 29, 2026)
 
 > **Next session starts here:** Phase 1 + Phase 2 are **browser-verified, committed, merged into
-> `master` and pushed** (2026-09-29). That includes the Q16 rejected-files banner, which was also
-> browser-checked. What's open: send Ravi the Outstanding item 3 points, and the `devops` pass
-> (packaging and deployment), which hasn't started.
+> `master` and pushed** (2026-09-29). All open questions that affect the code, the four deviations
+> and all 27 design defaults are answered or confirmed. What's open: (1) the **hosting decision**:
+> Marcos wants to stay on Streamlit, but must choose Streamlit Community Cloud (public, outside
+> Circana) or Streamlit on Circana infrastructure (decision 2), which needs IT and involves client
+> data. (2) After that, the `devops` pass. (3) Ravi only needs the 8th-digit heads-up and the
+> later-phase questions.
 
 ### Phase 1 — consolidation: BUILT
 - **Requirements:** confirmed — `META_BRIEF.md` (19 locked decisions, settled in a full requirements interview)
@@ -32,7 +35,7 @@ Do not wait for him to ask.
   and section 8 (option B tolerance, 2026-09-28)
 - **Design:** `PHASE2_ARCHITECTURE.md` — approved by Marcos; all 7 concerns (C1–C7) accepted as
   recommended; 20 design defaults in section 11, each marked in code with
-  `# DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11, item N`
+  `# DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11, item N`
 - **Code:** all 5 build stages implemented, **each QC-approved** (2026-09-28/29)
 - **Tests: 561/561 passing, 0 skipped**, exit 0 (2026-09-29; 556 + 5 for the Q16 banner). Every run must print
   `LAYER 2 RAN — 212 rows, 7 columns, 318 non-blank cells compared, worst relative error 1.1E-14, tolerance 1E-13`
@@ -228,26 +231,23 @@ Recorded under each question in `QUESTIONS_FOR_RAVI.md`.
 
 ### 3. Still for Ravi
 
-- **Sign-off on four deviations from the doc** (`META_BRIEF.md` section 7, also at the end of
-  `QUESTIONS_FOR_RAVI.md`). All four follow from the hosted-web-app decision: no output folder, no
-  true folder picker, `MODEL_DESC` standardization stays manual, and the schema is read at runtime rather than stored.
+- ~~Sign-off on four deviations from the doc~~ — **signed off by Marcos 2026-09-29** (`META_BRIEF.md` section 7).
 - **Heads-up:** app figures will differ from his manual workbook from about the 8th digit
   (`PHASE2_BRIEF.md` section 11 item 6).
 - **Later-phase questions** (Q2 target date, Q7–Q10, Q12, Q13, Q17–Q19) are not urgent.
 
-### 4. Open design defaults
+### 4. Design defaults — ALL 27 CONFIRMED 2026-09-29 (Marcos)
 
-- **Phase 1:** `ARCHITECTURE.md` section 8 items 1, 2, 3, 5, 6, 7, 8 are implemented per their
-  stated default but not confirmed with the requester. Each is marked in code with
-  `# DESIGN DEFAULT — pending confirmation, see spec section 8, item N`. Items 4 and 9 are
-  resolved. Item 10 is a note, not a decision.
-- **Phase 2:** `PHASE2_ARCHITECTURE.md` section 11, items 1–20, same convention.
+- **Phase 1:** `ARCHITECTURE.md` section 8, items 1, 2, 3, 5, 6, 7 and 8. **Phase 2:** `PHASE2_ARCHITECTURE.md`
+  section 11, items 1–20. Both were confirmed as built, with no changes.
+- The code markers now read `# DESIGN DEFAULT — confirmed 2026-09-29, see …`. They were kept so each
+  decision can still be traced to its spec item.
 
 ### 5. After the browser check passes (it has — 2026-09-29)
 
 - ~~Amend `ARCHITECTURE.md` with a "Phase 2 amendments" section~~ — done 2026-09-29 (section 10).
 - ~~Commit `phase2`, merge to `master`, push~~ — done 2026-09-29.
-- `devops` pass (packaging/deployment) — not started for either phase.
+- `devops` pass (packaging/deployment) — not started. It stays Streamlit (Marcos, 2026-09-29); the host is still to be decided (see the top of this file).
 
 ---
 

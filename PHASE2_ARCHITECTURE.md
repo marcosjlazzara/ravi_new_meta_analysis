@@ -4,8 +4,9 @@
 `ARCHITECTURE.md` remains the Phase 1 design authority; section 12 below lists the exact amendments it needs.
 **Status:** DESIGN — **approved by Marcos 2026-09-28**, all section 15 concerns accepted as recommended. Branch `phase2`.
 
-Design defaults (things the brief does not settle) are numbered in section 11. Each must be marked in code with
-`# DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11, item N`.
+Design defaults (things the brief does not settle) are numbered in section 11. Each is marked in code with
+`# DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11, item N`. All 20 were confirmed
+as built by Marcos on 2026-09-29; until then the markers read "pending confirmation".
 Items that strain or conflict with a locked decision are listed in section 15 (Concerns), not quietly designed around.
 
 ---
@@ -130,11 +131,11 @@ NUMERIC_CHECKED_HEADERS: tuple[str, ...] = TEMPLATE_VALUE_HEADERS[:5]          #
 # --- P3 signature: any of these in a file's headers => Phase 2 output ---------
 PHASE2_OUTPUT_SIGNATURE_HEADERS: tuple[str, ...] = (
     *CALCULATED_HEADERS, *LEGACY_CALCULATED_HEADERS, *TEMPLATE_VALUE_HEADERS,
-)  # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11, item 6
+)  # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11, item 6
 
 # --- P11: an upload is "the master" if it carries ALL of these ---------------
 MASTER_LOOKALIKE_COLUMNS: tuple[str, ...] = (MODEL_DESC_COL, MODEL_COL, DEPENDENT_VARIABLE_COL)
-# DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11, item 8
+# DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11, item 8
 
 # --- P16/P17 value check -----------------------------------------------------
 VALUE_CHECK_ENABLED: bool = True
@@ -238,7 +239,7 @@ MSG_WRONG_FILE: str = (
 )
 MSG_ZERO_MATCH: str = "None of the {n} studies in this file match the current master. Is this from a different project?"
 MSG_MASTER_ONLY_RUN: str = "No study files uploaded. The master will be used as-is for Phase 2."
-# NOT agreed wording — proposals, see section 15 item C3:
+# Wording confirmed 2026-09-29 (was proposal C3; design default 9):
 MSG_UPLOAD_IS_MASTER: str = (
     "This looks like a master or `after_formulas_master` file (it contains the master's data columns), "
     "not a `studyname_master` file. Please upload the completed template downloaded above."
@@ -1243,9 +1244,9 @@ test. Nothing is written to disk.
 
 ---
 
-## 11. Design defaults pending confirmation
+## 11. Design defaults — all 20 confirmed as built by Marcos, 2026-09-29
 
-Each is marked in code with `# DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11, item N`.
+Each is marked in code with `# DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11, item N`.
 
 1. A needed master input cell that is blank or not numeric makes the dependent outputs blank, with one warning per cell.
 2. The copy columns (AG, AI, AJ, AM) go through `format_number`: same value, normalised text (`12149247.0` becomes

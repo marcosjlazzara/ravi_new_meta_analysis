@@ -133,7 +133,7 @@ def _build_template_sheet(workbook: Workbook, study_names: Sequence[str]) -> Non
     # default 18) so users may widen columns. Every other flag stays at
     # openpyxl's default.
     worksheet.protection.sheet = True
-    worksheet.protection.formatColumns = False  # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11, item 18
+    worksheet.protection.formatColumns = False  # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11, item 18
 
 
 def _build_glossary_sheet(workbook: Workbook) -> None:

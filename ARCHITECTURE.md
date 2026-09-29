@@ -3,14 +3,14 @@
 **Source of truth for scope:** `META_BRIEF.md`. This document designs *how*, never *what*.
 **Status:** **BUILD COMPLETE 2026-09-07.** All five phases implemented and QC-approved;
 236/236 checks passing; `app.py` confirmed to launch. Section 8 items 4 and 9 are resolved;
-items 1, 2, 3, 5, 6, 7 and 8 remain open with the requester and are marked at their
-implementation sites in code. Item 10 is a note, not a decision.
+items 1, 2, 3, 5, 6, 7 and 8 were **confirmed as built by Marcos on 2026-09-29**, and are marked at
+their implementation sites in code. Item 10 is a note, not a decision.
 
 **Phase 2 amended some contracts in this document. See section 10 before relying on
 section 3, section 4 edge case 14, or the section 9 column-literal rule.**
 
 **Browser-verified 2026-09-29** (STEPs 2–9, on the Phase 2 code) by Marcos.
-**Not yet done:** requester sign-off on the four deviations in section 7 of the brief.
+**Four deviations** (brief section 7) signed off by Marcos, 2026-09-29.
 
 ---
 
@@ -570,10 +570,11 @@ first-master slot appears only when zero valid candidates exist.
 
 ---
 
-## 8. Open items — requester decisions, NOT resolved by the architect
+## 8. Open items — requester decisions (all confirmed as built by Marcos, 2026-09-29)
 
 A default is specified for each so the developer is never blocked. Each default is marked in
-code with `# DESIGN DEFAULT — pending confirmation, see spec section 8, item N`.
+code with `# DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item N` (it read "pending
+confirmation" until then).
 
 1. **"Total records consolidated"** (brief section 5) — rows added this run, or rows in the
    final master? Default: show **both**.

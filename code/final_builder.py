@@ -82,7 +82,7 @@ def build_final(
 
     warnings.extend(upload.warnings)
 
-    # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+    # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
     # item 14 (second half): blank-name master rows are excluded from the template
     # (template_builder.list_template_studies) and get blank merged columns here,
     # plus this one summary warning.
@@ -98,7 +98,7 @@ def build_final(
         )
 
     # 3. per-master-study matching, value check --------------------------------
-    # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+    # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
     # item 16: the P16 value check runs only on values that are actually merged
     # (checked_headers is present_fixed-gated, and the check itself sits inside
     # the single-filled-row branch below, never on a blank or duplicated study).
@@ -107,7 +107,7 @@ def build_final(
     for key in master_keys_order:
         display_name = master_key_display[key]
         upload_rows = upload.rows_by_study.get(key, [])
-        # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+        # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
         # item 15: all-blank upload rows do not count towards P13's "same study twice".
         filled_rows = [r for r in upload_rows if any(v.strip() != "" for v in r.values.values())]
 

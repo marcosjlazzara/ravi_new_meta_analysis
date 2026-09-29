@@ -119,7 +119,7 @@ def process_file(
         return None, _outcome(config.STATUS_SKIPPED, config.REASON_NO_DATA_ROWS)
 
     # 6. duplicate Study_Name — already in master, or seen earlier in this batch
-    # DESIGN DEFAULT — pending confirmation, see spec section 8, item 6
+    # DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item 6
     # Duplicate comparison is strip + casefold; taken_names/existing_study_names
     # store the normalized key only for comparison — the FileOutcome.study_name
     # and the value written into the master column stay verbatim (see step 7).

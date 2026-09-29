@@ -186,7 +186,7 @@ for c in invalid_candidates:
             f"{c.error} It will be treated as a study file instead."
         )
     else:
-        # DESIGN DEFAULT — pending confirmation, see spec section 8, item 3
+        # DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item 3
         # A Master_-prefixed file lacking Study_Name is warned about, excluded
         # from master candidacy, and falls through to be validated as an
         # ordinary study file (rather than rejected outright).
@@ -246,7 +246,7 @@ elif len(valid_candidates) > 1:
                         file=c.name,
                         index=c.index,
                         status=config.STATUS_SKIPPED,
-                        reason=config.REASON_NOT_SELECTED_MASTER,  # DESIGN DEFAULT — pending confirmation, see spec section 8, item 5
+                        reason=config.REASON_NOT_SELECTED_MASTER,  # DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item 5
                         missing_cols=[],
                         extra_cols=[],
                         study_name="",
@@ -367,7 +367,7 @@ if master is not None:
                 f"These files have a blank study name and will be rejected: {', '.join(blank_files)}"
             )
 
-        # DESIGN DEFAULT — pending confirmation, see spec section 8, item 6
+        # DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item 6
         # Duplicate Study_Name detection is strip + casefold ("instacart_bounty"
         # collides with "Instacart_Bounty"); the values themselves are stored
         # verbatim in study_names / the master, never normalized in place.

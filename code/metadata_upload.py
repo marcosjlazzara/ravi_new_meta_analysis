@@ -53,7 +53,7 @@ def parse_upload(filename: str, data: bytes, master_columns: Sequence[str]) -> P
     if not study_positions:
         return _refused(config.MSG_WRONG_FILE)
 
-    # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+    # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
     # item 10: two Study_Name columns -> the leftmost is used, the rest warned + ignored.
     study_pos = study_positions[0]
     warnings: list[Phase2Warning] = []
@@ -71,7 +71,7 @@ def parse_upload(filename: str, data: bytes, master_columns: Sequence[str]) -> P
         )
 
     # 4. master-lookalike refusal (P11, ruling C2) ---------------------------
-    # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+    # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
     # item 8: "contains master columns" means carrying ALL of MASTER_LOOKALIKE_COLUMNS.
     header_keys = {normalize_header(h) for h in headers}
     lookalike_keys = {normalize_header(c) for c in config.MASTER_LOOKALIKE_COLUMNS}
@@ -79,7 +79,7 @@ def parse_upload(filename: str, data: bytes, master_columns: Sequence[str]) -> P
         return _refused(config.MSG_UPLOAD_IS_MASTER)
 
     # 5. header classification (7.2), left to right --------------------------
-    # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+    # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
     # item 13: the reserved set for extras also includes the calculated headers,
     # the legacy header and TEMPLATE_HEADERS, not just the master's own columns.
     reserved_keys = {normalize_header(c) for c in master_columns}
@@ -115,7 +115,7 @@ def parse_upload(filename: str, data: bytes, master_columns: Sequence[str]) -> P
             extra_candidates.setdefault(key, []).append((j, h))
             continue
 
-        # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+        # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
         # item 11: fixed headers are matched by name at any position (checked above,
         # before this branch); an unknown header in columns A-G is ignored + warned.
         warnings.append(
@@ -148,7 +148,7 @@ def parse_upload(filename: str, data: bytes, master_columns: Sequence[str]) -> P
                 )
             )
         else:
-            # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section
+            # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section
             # 11, item 12: a duplicated header (fixed or extra) has ALL its occurrences
             # ignored, with a warning — nobody guesses which copy is right.
             letters = config.LIST_JOIN_SEPARATOR.join(column_letter(p) for p in positions)
@@ -218,7 +218,7 @@ def parse_upload(filename: str, data: bytes, master_columns: Sequence[str]) -> P
         # every merge column must be present, "" if not merged in this upload
         values = {col: values.get(col, "") for col in merge_columns}
 
-        # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+        # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
         # item 14: a row with values but no study name is ignored with a warning; a
         # row with no study name and no values is ignored silently.
         if name.strip() == "":

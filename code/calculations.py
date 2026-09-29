@@ -94,7 +94,7 @@ def build_calculations(master_df: pd.DataFrame, am_round_2dp: bool | None = None
                 )
             )
             if source_name == config.DEPENDENT_VARIABLE_COL:
-                # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md
+                # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md
                 # section 11, item 1: a needed input that cannot be found makes every
                 # dependent output blank. Without dependent_variable no row role can
                 # ever be determined, so the whole frame is returned immediately.
@@ -108,14 +108,14 @@ def build_calculations(master_df: pd.DataFrame, am_round_2dp: bool | None = None
     study_values: list[str] = master_df[study_col].tolist() if study_col is not None else [""] * n
 
     # --- section 3.2: row roles -------------------------------------------------
-    # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+    # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
     # item 3: dependent_variable is compared after strip + casefold. Unknown values
     # (design default 4) simply get role None, silently — no warning.
     role_raw: list[str] = [master_df.iloc[i][f_col].strip() for i in range(n)]
     roles: list[str | None] = [r.casefold() if r.casefold() in _ROLES else None for r in role_raw]
 
     def _block_label(row_idx: int) -> str:
-        # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11, item 5
+        # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11, item 5
         if not have_block:
             return ""
         return config.BLOCK_LABEL_PATTERN.format(
@@ -124,7 +124,7 @@ def build_calculations(master_df: pd.DataFrame, am_round_2dp: bool | None = None
         )
 
     # --- section 3.5: cell parsing / problem recording --------------------------
-    # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11,
+    # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11,
     # item 1: a problem cell is keyed by (row, source column); every output header
     # it blanks accumulates onto the SAME warning, which is emitted once, listing
     # every header it blanked.
@@ -164,7 +164,7 @@ def build_calculations(master_df: pd.DataFrame, am_round_2dp: bool | None = None
             if have_g:
                 g_val = _get_value(i, g_col, config.CALC_TOTAL_ANALYZED_POPULATION)
                 if g_val is not None:
-                    # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md
+                    # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md
                     # section 11, item 2: copy columns go through format_number
                     # (normalised text), they are not byte-copied from the source cell.
                     out[config.CALC_TOTAL_ANALYZED_POPULATION][i] = numeric.format_number(g_val)
@@ -221,7 +221,7 @@ def build_calculations(master_df: pd.DataFrame, am_round_2dp: bool | None = None
             block_model_label = _block_label(anchor_row)
             headers_str = config.LIST_JOIN_SEPARATOR.join(_BLOCK_DEPENDENTS)
 
-            # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md
+            # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md
             # section 11, item 4: one warning per problem type (missing / duplicated).
             if missing_roles:
                 roles_str = ", ".join(f"'{r}'" for r in missing_roles)

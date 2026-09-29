@@ -85,7 +85,7 @@ def summarize(result: BatchResult) -> dict[str, int]:
 
     Items 5/6 show both interpretations of "total records consolidated"
     (rows added this run, and rows in the final master).
-    # DESIGN DEFAULT — pending confirmation, see spec section 8, item 1
+    # DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item 1
     """
     return {
         "Total files processed": result.total_files,

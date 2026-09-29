@@ -140,7 +140,7 @@ Per the doc:
 
 ---
 
-## 7. Deviations from the doc — REQUIRE REQUESTER SIGN-OFF
+## 7. Deviations from the doc — SIGNED OFF by Marcos, 2026-09-29
 
 | Doc says | Reality | Why |
 |---|---|---|
@@ -182,5 +182,4 @@ Per the doc:
       A real-world failing file is still preferable and welcome.
 
 - [x] **Zero-data-row file** — settled as decision 19 below.
-- [ ] **Requester sign-off** on the four deviations in section 7. **This is the only
-      blocker remaining.**
+- [x] **Sign-off** on the four deviations in section 7 — given by Marcos, 2026-09-29.

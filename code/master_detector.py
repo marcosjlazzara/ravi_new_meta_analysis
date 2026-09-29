@@ -143,7 +143,7 @@ def build_master_context_from_existing(item: UploadedItem) -> MasterContext:
     """
     frame = read_table(item.name, item.data)
     _refuse_phase2_output(frame)  # P3: second line of defence against an after_formulas_master
-    # DESIGN DEFAULT — pending confirmation, see spec section 8, item 7
+    # DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item 7
     # columns is taken verbatim in file order and never reordered here — an
     # inherited master's Study_Name position (wherever the uploaded file put
     # it) is left exactly as-is. Master order wins; "append Study_Name last"
@@ -181,7 +181,7 @@ def build_master_context_from_first_file(item: UploadedItem, base_name: str) -> 
         frame = frame.copy()
         frame[config.STUDY_NAME_COL] = item.stem
     else:
-        # DESIGN DEFAULT — pending confirmation, see spec section 8, item 2
+        # DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item 2
         # The uploaded first-master file already carries Study_Name (e.g. the
         # real Holly_Rancher sample). Leave the column and its values exactly
         # as-is and do not move it — overwriting would destroy real data.

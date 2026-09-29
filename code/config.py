@@ -22,7 +22,7 @@ STUDY_NAME_COL: str = "Study_Name"            # the only literal column name in 
 OUTPUT_ENCODING: str = "utf-8-sig"
 TIMESTAMP_FORMAT: str = "%Y-%m-%d_%H%M"       # brief decision 15
 MASTER_FILENAME_PATTERN: str = "Master_File_{name}_{timestamp}.csv"
-EXCEPTION_FILENAME_PATTERN: str = "Exceptions_{name}_{timestamp}.csv"  # DESIGN DEFAULT — pending confirmation, see spec section 8, item 8
+EXCEPTION_FILENAME_PATTERN: str = "Exceptions_{name}_{timestamp}.csv"  # DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item 8
 MASTER_TIMESTAMP_SUFFIX_RE: str = r"^(?P<name>.+)_\d{4}-\d{2}-\d{2}_\d{4}$"
 ILLEGAL_FILENAME_CHARS: str = '<>:"/\\|?*'
 FILENAME_REPLACEMENT_CHAR: str = "_"
@@ -40,7 +40,7 @@ REASON_DUPLICATE_COLUMNS: str = "duplicate columns"
 REASON_ALREADY_IN_MASTER: str = "already in master"
 REASON_DUPLICATE_IN_BATCH: str = "duplicate in batch"
 REASON_BLANK_STUDY_NAME: str = "blank study name"
-REASON_NOT_SELECTED_MASTER: str = "not selected as master"  # DESIGN DEFAULT — pending confirmation, see spec section 8, item 5
+REASON_NOT_SELECTED_MASTER: str = "not selected as master"  # DESIGN DEFAULT — confirmed 2026-09-29, see spec section 8, item 5
 
 EXCEPTION_REPORT_COLUMNS: list[str] = ["file", "status", "reason", "missing_cols", "extra_cols"]
 LIST_JOIN_SEPARATOR: str = "; "
@@ -102,11 +102,11 @@ NUMERIC_CHECKED_HEADERS: tuple[str, ...] = TEMPLATE_VALUE_HEADERS[:5]          #
 # --- P3 signature: any of these in a file's headers => Phase 2 output ---------
 PHASE2_OUTPUT_SIGNATURE_HEADERS: tuple[str, ...] = (
     *CALCULATED_HEADERS, *LEGACY_CALCULATED_HEADERS, *TEMPLATE_VALUE_HEADERS,
-)  # DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11, item 6
+)  # DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11, item 6
 
 # --- P11: an upload is "the master" if it carries ALL of these ---------------
 MASTER_LOOKALIKE_COLUMNS: tuple[str, ...] = (MODEL_DESC_COL, MODEL_COL, DEPENDENT_VARIABLE_COL)
-# DESIGN DEFAULT — pending confirmation, see PHASE2_ARCHITECTURE.md section 11, item 8
+# DESIGN DEFAULT — confirmed 2026-09-29, see PHASE2_ARCHITECTURE.md section 11, item 8
 
 # --- P16/P17 value check -----------------------------------------------------
 VALUE_CHECK_ENABLED: bool = True
@@ -125,7 +125,7 @@ AM_ROUND_QUANTUM: str = "0.01"
 # --- P7/P8/P18 template workbook ---------------------------------------------
 TEMPLATE_SHEET_TITLE: str = "studyname_master"
 GLOSSARY_SHEET_TITLE: str = "Glossary"
-PCT_NUMBER_FORMAT: str = "0.00%"           # DESIGN DEFAULT — see section 11, item 18
+PCT_NUMBER_FORMAT: str = "0.00%"           # DESIGN DEFAULT, confirmed 2026-09-29 — see section 11, item 18
 XLSX_MAX_COLUMN: int = 16384               # XFD
 TEMPLATE_STUDY_COL_WIDTH: int = 45
 TEMPLATE_VALUE_COL_WIDTH: int = 18
@@ -135,11 +135,11 @@ CSV_MIME: str = "text/csv"
 # --- P7/P19/P30 filenames (same {name}/{timestamp} contract as Phase 1) -------
 TEMPLATE_FILENAME_PATTERN: str = "studyname_master_{name}_{timestamp}.xlsx"
 FINAL_FILENAME_PATTERN: str = "after_formulas_master_{name}_{timestamp}.csv"
-PHASE2_WARNINGS_FILENAME_PATTERN: str = "phase2_warnings_{name}_{timestamp}.csv"  # DESIGN DEFAULT — item 17
+PHASE2_WARNINGS_FILENAME_PATTERN: str = "phase2_warnings_{name}_{timestamp}.csv"  # DESIGN DEFAULT, confirmed 2026-09-29 — item 17
 
 # --- P30 warnings report -----------------------------------------------------
 PHASE2_WARNING_COLUMNS: list[str] = ["Study", "Model", "Column", "Issue"]
-BLOCK_LABEL_PATTERN: str = "{model_desc} / {model}"        # DESIGN DEFAULT — item 5
+BLOCK_LABEL_PATTERN: str = "{model_desc} / {model}"        # DESIGN DEFAULT, confirmed 2026-09-29 — item 5
 
 # Warning codes (tests assert on these, never on issue text; codes are never written out)
 P2W_SOURCE_COLUMN_MISSING: str = "source_column_missing"
@@ -189,7 +189,7 @@ ISSUE_VALUE_NOT_PLAIN_NUMBER: str = "Not a plain number ('{value}') — merged a
 
 # --- Section 6 messages, VERBATIM. The leading symbol in PHASE2_BRIEF section 6
 # selects the Streamlit box (warning / info / error / success) and is NOT part of
-# the string. DESIGN DEFAULT — item 19.
+# the string. DESIGN DEFAULT, confirmed 2026-09-29 — item 19.
 MSG_PHASE2_OUTPUT: str = (
     "**This file contains calculated columns.** It looks like an `after_formulas_master` output. "
     "Please upload the original Master File (`Master_File_…`), without calculations."
@@ -222,7 +222,7 @@ MSG_FILES_REJECTED_MANY: str = (
     "Fix these files and run again; studies already in the master will be skipped. "
     "Details are in the exception report."
 )
-# NOT agreed wording — proposals, see section 15 item C3:
+# Wording confirmed 2026-09-29 (was proposal C3; design default 9):
 MSG_UPLOAD_IS_MASTER: str = (
     "This looks like a master or `after_formulas_master` file (it contains the master's data columns), "
     "not a `studyname_master` file. Please upload the completed template downloaded above."
@@ -232,11 +232,11 @@ MSG_NO_ISSUES: str = "No issues found"
 MSG_WARNINGS_SUMMARY: str = (
     "{total} warning(s) — {calc} from the calculations, {upload} from the uploaded template. "
     "The final file can still be downloaded."
-)  # DESIGN DEFAULT — item 20
+)  # DESIGN DEFAULT, confirmed 2026-09-29 — item 20
 MSG_UPLOAD_PROMPT: str = (
     "Upload the completed template to build the final file. For calculations only, upload the "
     "blank template as downloaded."
-)  # DESIGN DEFAULT — item 20
+)  # DESIGN DEFAULT, confirmed 2026-09-29 — item 20
 # Ruling C5, 2026-09-28 — shown under the STEP 8 upload widget.
 MSG_UPLOAD_CSV_CAUTION: str = (
     "Upload the .xlsx as downloaded; saving it as CSV from Excel turns percentages into text."

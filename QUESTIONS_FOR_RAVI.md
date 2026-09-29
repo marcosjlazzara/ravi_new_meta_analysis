@@ -21,8 +21,8 @@ Context: questions on `Meta Analysis_NewV1.docx` (the 4-phase Meta Analysis auto
 > **The three that matter most are Q5, Q15 and Q16.** All three concern the tool as built.
 >
 > **UPDATE 2026-09-29:** Marcos answered Q3, Q5, Q6, Q11, Q15, Q16 and Q20–Q24 — see the
-> "ANSWERED 2026-09-29" notes under each. Still for Ravi: the four deviations and the
-> 8th-digit heads-up ("Additional items" below), plus the later-phase questions.
+> "ANSWERED 2026-09-29" notes under each. The four deviations and the 27 design
+> defaults were also signed off. Still for Ravi: the 8th-digit heads-up and the later-phase questions.
 
 ---
 
@@ -165,6 +165,10 @@ Context: questions on `Meta Analysis_NewV1.docx` (the 4-phase Meta Analysis auto
 ## Additional items for the same conversation
 
 Not in the original list — these arose from building Phase 1 and need the same sign-off.
+
+> ✅ **SIGNED OFF 2026-09-29 (Marcos).** All four deviations below are accepted as built. The same
+> day, all 27 design defaults (`ARCHITECTURE.md` section 8, `PHASE2_ARCHITECTURE.md` section 11)
+> were confirmed as built.
 
 **Four deviations from the source document** (detail in `META_BRIEF.md` section 7). All four follow from the decision to build a hosted web app rather than a local tool:
 
